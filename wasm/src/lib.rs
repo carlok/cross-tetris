@@ -166,6 +166,17 @@ impl WasmCrossGame {
         self.cross.active_arm().map(|a| a.index() as i8).unwrap_or(-1)
     }
 
+    /// Milliseconds elapsed toward the auto-select timeout while awaiting a
+    /// well selection (0 once a piece is falling). Pair with
+    /// `selection_timeout_ms()` to render a countdown.
+    pub fn selection_timer_ms(&self) -> f64 {
+        self.cross.selection_timer_ms()
+    }
+
+    pub fn selection_timeout_ms(&self) -> f64 {
+        engine::cross::SELECTION_TIMEOUT_MS
+    }
+
     pub fn move_left(&mut self) {
         self.cross.apply(Action::MoveLeft);
     }

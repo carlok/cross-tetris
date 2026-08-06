@@ -3,6 +3,7 @@ import './App.css'
 import { ArmPanel, type ArmHighlight } from './components/ArmPanel'
 import type { BoardHandle } from './components/Board'
 import { PiecePreview } from './components/PiecePreview'
+import { SelectionTimer, type SelectionTimerHandle } from './components/SelectionTimer'
 import { Hud } from './components/Hud'
 import { Controls } from './components/Controls'
 import { useGameLoop } from './game/useGameLoop'
@@ -42,6 +43,7 @@ export default function App() {
   const [armHud, setArmHud] = useState<Record<WasmArm, ArmHud>>(EMPTY_ARM_HUD_MAP)
 
   const gameRef = useRef<WasmCrossGame | null>(null)
+  const selectionTimerRef = useRef<SelectionTimerHandle>(null)
   const boardRefs = {
     [WasmArm.North]: useRef<BoardHandle>(null),
     [WasmArm.East]: useRef<BoardHandle>(null),
@@ -82,6 +84,10 @@ export default function App() {
       boardRefs[arm].current?.draw(game.board_buffer(arm))
     }
 
+    const awaitingNow = game.awaiting_well_selection()
+    const remainingFraction = awaitingNow ? 1 - game.selection_timer_ms() / game.selection_timeout_ms() : 1
+    selectionTimerRef.current?.setFraction(remainingFraction)
+
     const nextArmHud = Object.fromEntries(
       ARMS.map(({ arm }) => [arm, { score: game.score(arm), gameOver: game.arm_game_over(arm) }]),
     ) as Record<WasmArm, ArmHud>
@@ -89,7 +95,7 @@ export default function App() {
     const next = {
       totalScore: game.total_score(),
       gameOver: game.is_game_over(),
-      awaitingSelection: game.awaiting_well_selection(),
+      awaitingSelection: awaitingNow,
       activeArm: rawActiveArm >= 0 ? (rawActiveArm as WasmArm) : null,
       nextPieceKind: game.next_queue(1)[0] ?? 0,
       armHud: nextArmHud,
@@ -172,6 +178,7 @@ export default function App() {
         >
           <div style={{ fontFamily: 'monospace', fontSize: 9, opacity: 0.6 }}>NEXT</div>
           <PiecePreview kind={nextPieceKind} cellSize={12} />
+          <SelectionTimer ref={selectionTimerRef} width={48} />
         </div>
         <div style={{ gridColumn: 3, gridRow: 2 }}>
           <ArmPanel

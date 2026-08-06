@@ -51,7 +51,7 @@ Open the printed local URL. Controls:
 
 | Key | Action |
 |---|---|
-| 1 / 2 / 3 / 4 | send the next queued piece to North / East / South / West |
+| Arrows or 1/2/3/4 | send the next queued piece to North/East/South/West (arrows match the layout: Up=N, Right=E, Down=S, Left=W) |
 | ← / → | move the currently falling piece |
 | ↑ | rotate CW |
 | Z | rotate CCW |
@@ -59,11 +59,15 @@ Open the printed local URL. Controls:
 | Space | hard drop |
 | C | hold (per-well hold slot) |
 
-Movement keys always act on whichever piece is currently falling — there's
-only ever one, so no well targeting is needed for them. Click **Switch to
-AI** to hand the queue to the greedy rule-based AI, which evaluates all four
-wells for each piece and routes it to the best one (`ai_step()` on an
-interval, one placement per step).
+Arrow keys double as well-selection and movement — never ambiguous, since a
+piece only starts falling after a well is picked, so the two meanings never
+overlap in time. Movement keys always act on whichever piece is currently
+falling (there's only ever one). If you don't pick a well within
+`SELECTION_TIMEOUT_MS` (5s, `engine/src/cross.rs`), one is chosen at random
+from a deterministic RNG stream — shown as a countdown bar under the next-
+piece preview. Click **Switch to AI** to hand the queue to the greedy
+rule-based AI, which evaluates all four wells for each piece and routes it
+to the best one (`ai_step()` on an interval, one placement per step).
 
 ## Run the tests
 

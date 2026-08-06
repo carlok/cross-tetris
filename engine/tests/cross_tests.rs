@@ -43,13 +43,49 @@ fn only_the_selected_well_gets_gravity_and_the_rest_stay_static() {
 }
 
 #[test]
-fn tick_and_actions_are_no_ops_while_awaiting_selection() {
+fn move_and_drop_actions_are_no_ops_while_awaiting_selection() {
     let mut cross = CrossGame::new(5);
     let before = cross.clone();
-    cross.apply(Action::Tick(5000.0));
     cross.apply(Action::MoveLeft);
     cross.apply(Action::HardDrop);
     assert_eq!(cross, before, "nothing should happen until a well is selected");
+}
+
+#[test]
+fn tick_while_awaiting_selection_only_advances_the_timeout_clock() {
+    let mut cross = CrossGame::new(5);
+    cross.apply(Action::Tick(1000.0)); // well under SELECTION_TIMEOUT_MS
+    assert!(cross.awaiting_well_selection(), "should still be awaiting selection before the timeout elapses");
+    for arm in Arm::ALL {
+        assert_eq!(cross.well(arm).board.column_height(0), 0, "no well should have received a piece yet");
+    }
+}
+
+#[test]
+fn failing_to_select_a_well_in_time_auto_selects_one() {
+    let mut cross = CrossGame::new(6);
+    assert!(cross.awaiting_well_selection());
+    cross.apply(Action::Tick(engine::cross::SELECTION_TIMEOUT_MS));
+    assert!(!cross.awaiting_well_selection(), "a well should have been auto-selected once the timeout elapsed");
+}
+
+#[test]
+fn auto_selection_never_picks_a_topped_out_well() {
+    let mut cross = CrossGame::new(7);
+    for arm in [Arm::North, Arm::East, Arm::South] {
+        cross.wells[arm.index()].game_over = true;
+    }
+    cross.apply(Action::Tick(engine::cross::SELECTION_TIMEOUT_MS));
+    assert_eq!(cross.active_arm(), Some(Arm::West), "the only open well must be the one auto-selected");
+}
+
+#[test]
+fn selecting_a_well_manually_resets_the_timeout_clock() {
+    let mut cross = CrossGame::new(8);
+    cross.apply(Action::Tick(4000.0));
+    cross.select_well(Arm::North);
+    cross.apply(Action::HardDrop); // lock it, back to awaiting
+    assert_eq!(cross.selection_timer_ms(), 0.0, "picking a well should reset the timeout clock for the next piece");
 }
 
 #[test]

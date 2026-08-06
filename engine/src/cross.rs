@@ -16,9 +16,15 @@ use crate::bag::SevenBag;
 use crate::board::Board;
 use crate::game::{LINES_PER_LEVEL, LOCK_DELAY_MS, MAX_LOCK_RESETS, SOFT_DROP_MULTIPLIER, SPAWN_ROW};
 use crate::piece::{ActivePiece, PieceKind, Rotation};
+use crate::rng::Rng;
 use crate::rotation::{piece_fits, try_rotate};
 use crate::scoring::{gravity_ms_per_row, line_clear_score, HARD_DROP_POINTS_PER_CELL, SOFT_DROP_POINTS_PER_CELL};
 use crate::Action;
+
+/// How long the player/AI has to pick a well for the next piece before one
+/// is chosen for them (documented assumption — keeps the cross under time
+/// pressure the way normal gravity does within a well).
+pub const SELECTION_TIMEOUT_MS: f64 = 5000.0;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Arm {
@@ -80,6 +86,11 @@ pub struct CrossGame {
     gravity_accum_ms: f64,
     lock_timer_ms: Option<f64>,
     lock_reset_count: u32,
+    /// Separate deterministic stream from `bag`'s, used only to pick a well
+    /// when the selection timer expires — kept distinct so auto-selection
+    /// never perturbs the piece sequence itself.
+    select_rng: Rng,
+    selection_timer_ms: f64,
 }
 
 impl CrossGame {
@@ -93,7 +104,15 @@ impl CrossGame {
             gravity_accum_ms: 0.0,
             lock_timer_ms: None,
             lock_reset_count: 0,
+            select_rng: Rng::new(seed ^ 0xA5A5_A5A5_A5A5_A5A5),
+            selection_timer_ms: 0.0,
         }
+    }
+
+    /// Milliseconds elapsed toward the auto-select timeout while awaiting a
+    /// well selection (always 0 while a piece is falling).
+    pub fn selection_timer_ms(&self) -> f64 {
+        self.selection_timer_ms
     }
 
     pub fn well(&self, arm: Arm) -> &Well {
@@ -158,6 +177,19 @@ impl CrossGame {
         self.gravity_accum_ms = 0.0;
         self.lock_timer_ms = None;
         self.lock_reset_count = 0;
+        self.selection_timer_ms = 0.0;
+    }
+
+    /// Picks a well at random among non-topped-out wells for the piece
+    /// that's about to be drawn from the queue (called when the selection
+    /// timer expires). No-op if every well has topped out.
+    fn auto_select_well(&mut self) {
+        let open: Vec<Arm> = Arm::ALL.into_iter().filter(|&arm| !self.wells[arm.index()].game_over).collect();
+        if open.is_empty() {
+            return;
+        }
+        let idx = self.select_rng.next_below(open.len() as u32) as usize;
+        self.select_well(open[idx]);
     }
 
     fn is_grounded(&self) -> bool {
@@ -208,10 +240,16 @@ impl CrossGame {
     }
 
     /// Applies a real-time action to whichever piece is currently falling.
-    /// No-op (including `Tick`) if no piece is active — the game is paused
-    /// between pieces until `select_well` is called.
+    /// While awaiting a well selection, every action is a no-op except
+    /// `Tick`, which advances the auto-select timeout (see
+    /// `SELECTION_TIMEOUT_MS`) instead of gravity.
     pub fn apply(&mut self, action: Action) {
-        let Some(a) = self.active else { return };
+        let Some(a) = self.active else {
+            if let Action::Tick(dt_ms) = action {
+                self.tick_selection_timeout(dt_ms);
+            }
+            return;
+        };
         if self.wells[a.arm.index()].game_over {
             return;
         }
@@ -266,6 +304,14 @@ impl CrossGame {
         self.gravity_accum_ms = 0.0;
         self.lock_timer_ms = None;
         self.lock_reset_count = 0;
+    }
+
+    fn tick_selection_timeout(&mut self, dt_ms: f64) {
+        self.selection_timer_ms += dt_ms;
+        if self.selection_timer_ms >= SELECTION_TIMEOUT_MS {
+            self.selection_timer_ms = 0.0;
+            self.auto_select_well();
+        }
     }
 
     fn tick(&mut self, dt_ms: f64) {

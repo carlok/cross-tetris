@@ -15,13 +15,23 @@ const MOVE_ACTIONS: Record<string, (g: WasmCrossGame) => void> = {
   KeyC: (g) => g.hold(),
 }
 
-// Number keys 1-4 commit the next queued piece to a well. Only takes effect
-// while awaiting selection (the engine ignores it otherwise).
-const WELL_SELECT_KEYS: Record<string, WasmArm> = {
+// Number keys 1-4 commit the next queued piece to a well.
+const DIGIT_WELL_KEYS: Record<string, WasmArm> = {
   Digit1: WasmArm.North,
   Digit2: WasmArm.East,
   Digit3: WasmArm.South,
   Digit4: WasmArm.West,
+}
+
+// Arrow keys double as well selection while awaiting one — spatially
+// matching the cross layout (Up=North, Right=East, Down=South, Left=West).
+// No conflict with their movement meaning: a piece is only ever falling
+// once a well has already been picked, so the two uses never overlap.
+const ARROW_WELL_KEYS: Record<string, WasmArm> = {
+  ArrowUp: WasmArm.North,
+  ArrowRight: WasmArm.East,
+  ArrowDown: WasmArm.South,
+  ArrowLeft: WasmArm.West,
 }
 
 export function useKeyboardInput(gameRef: RefObject<WasmCrossGame | null>, enabled: boolean) {
@@ -32,9 +42,12 @@ export function useKeyboardInput(gameRef: RefObject<WasmCrossGame | null>, enabl
       const game = gameRef.current
       if (!game || event.repeat) return
 
-      if (event.code in WELL_SELECT_KEYS) {
-        event.preventDefault()
-        game.select_well(WELL_SELECT_KEYS[event.code])
+      if (game.awaiting_well_selection()) {
+        const arm = DIGIT_WELL_KEYS[event.code] ?? ARROW_WELL_KEYS[event.code]
+        if (arm !== undefined) {
+          event.preventDefault()
+          game.select_well(arm)
+        }
         return
       }
 
