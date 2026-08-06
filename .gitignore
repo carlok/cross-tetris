@@ -1,0 +1,10 @@
+/target
+/pkg
+/node_modules
+/dist
+web/pkg
+web/node_modules
+web/dist
+wasm/pkg
+wasm/target
+.DS_Store
