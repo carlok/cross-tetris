@@ -50,6 +50,11 @@ export const Board = forwardRef<BoardHandle, BoardProps>(function Board(
         for (let col = 0; col < BOARD_WIDTH; col++) {
           const value = buffer[row * BOARD_WIDTH + col]
           if (!value) continue
+          // Each case is a proper rotation of the 'down' (South, identity)
+          // mapping — never a plain axis swap/single-axis flip, which would
+          // mirror the piece (e.g. S becomes Z) instead of just reorienting
+          // it. 'up' is a 180° rotation (both axes flip); 'left'/'right' are
+          // 90° CW/CCW rotations of the whole board image.
           let x: number
           let y: number
           switch (gravityDirection) {
@@ -58,14 +63,14 @@ export const Board = forwardRef<BoardHandle, BoardProps>(function Board(
               y = row * cellSize
               break
             case 'up':
-              x = col * cellSize
+              x = (BOARD_WIDTH - 1 - col) * cellSize
               y = (BOARD_HEIGHT - 1 - row) * cellSize
               break
-            case 'right':
+            case 'right': // 90° CCW: South's bottom edge swings to the right
               x = row * cellSize
-              y = col * cellSize
+              y = (BOARD_WIDTH - 1 - col) * cellSize
               break
-            case 'left':
+            case 'left': // 90° CW: South's bottom edge swings to the left
               x = (BOARD_HEIGHT - 1 - row) * cellSize
               y = col * cellSize
               break
