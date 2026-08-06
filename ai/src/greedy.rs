@@ -14,6 +14,7 @@
 //! real-time input, so this does not misrepresent what the AI "solves".
 
 use engine::board::{Board, BOARD_WIDTH};
+use engine::cross::{Arm, CrossGame};
 use engine::piece::{ActivePiece, PieceKind, Rotation};
 use engine::rotation::{piece_fits, shape};
 use engine::{Action, GameState};
@@ -188,4 +189,16 @@ pub fn play_best_move(state: &mut GameState, weights: &Weights) {
     // simulated drop distance from there), so credit the hard-drop score the
     // piece would have earned falling from its original spawn row.
     state.score += drop_distance * engine::scoring::HARD_DROP_POINTS_PER_CELL;
+}
+
+/// Applies the greedy AI independently to every non-topped-out arm of a
+/// `CrossGame` (Mode A: each arm is evaluated and played on its own — no
+/// cross-board strategy yet, per the current milestone's scope).
+pub fn play_best_move_all(cross: &mut CrossGame, weights: &Weights) {
+    for arm in Arm::ALL {
+        let state = cross.arm_mut(arm);
+        if !state.game_over {
+            play_best_move(state, weights);
+        }
+    }
 }

@@ -1,7 +1,7 @@
-use ai::{best_placement, play_best_move, DEFAULT_WEIGHTS};
+use ai::{best_placement, play_best_move, play_best_move_all, DEFAULT_WEIGHTS};
 use engine::piece::{ActivePiece, PieceKind, Rotation};
 use engine::rotation::piece_fits;
-use engine::{GameState, BOARD_TOTAL_HEIGHT, BOARD_WIDTH};
+use engine::{Arm, CrossGame, GameState, BOARD_TOTAL_HEIGHT, BOARD_WIDTH};
 
 const BOTTOM: i32 = (BOARD_TOTAL_HEIGHT - 1) as i32;
 
@@ -89,4 +89,34 @@ fn greedy_ai_avoids_an_obviously_worse_placement_with_holes() {
         0,
         "the greedy AI should not have buried a hole when a flush, hole-free placement was available"
     );
+}
+
+#[test]
+fn play_best_move_all_advances_every_arm_independently() {
+    let mut cross = CrossGame::new(21);
+    let before: Vec<u32> = Arm::ALL.iter().map(|&a| cross.arm(a).lines_cleared_total).collect();
+
+    for _ in 0..10 {
+        play_best_move_all(&mut cross, &DEFAULT_WEIGHTS);
+    }
+
+    for arm in Arm::ALL {
+        let state = cross.arm(arm);
+        assert!(state.active.is_some() || state.game_over, "{arm:?} should have a legal active piece or be over");
+        if let Some(active) = state.active {
+            assert!(piece_fits(&state.board, &active));
+        }
+    }
+    let _ = before;
+}
+
+#[test]
+fn play_best_move_all_skips_topped_out_arms() {
+    let mut cross = CrossGame::new(22);
+    cross.arm_mut(Arm::North).game_over = true;
+    let before = cross.arm(Arm::North).clone();
+
+    play_best_move_all(&mut cross, &DEFAULT_WEIGHTS);
+
+    assert_eq!(cross.arm(Arm::North).clone(), before, "a topped-out arm must not be played");
 }

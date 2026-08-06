@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 
-export const CELL_SIZE = 24
+export const DEFAULT_CELL_SIZE = 24
 export const BOARD_WIDTH = 10
 export const BOARD_HEIGHT = 20
 
@@ -11,7 +11,11 @@ export interface BoardHandle {
   draw(buffer: Uint8Array): void
 }
 
-export const Board = forwardRef<BoardHandle>(function Board(_props, ref) {
+export interface BoardProps {
+  cellSize?: number
+}
+
+export const Board = forwardRef<BoardHandle, BoardProps>(function Board({ cellSize = DEFAULT_CELL_SIZE }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useImperativeHandle(ref, () => ({
@@ -27,7 +31,7 @@ export const Board = forwardRef<BoardHandle>(function Board(_props, ref) {
           const value = buffer[row * BOARD_WIDTH + col]
           if (!value) continue
           ctx.fillStyle = COLORS[value - 1] ?? '#999'
-          ctx.fillRect(col * CELL_SIZE + 1, row * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2)
+          ctx.fillRect(col * cellSize + 1, row * cellSize + 1, cellSize - 2, cellSize - 2)
         }
       }
     },
@@ -36,8 +40,8 @@ export const Board = forwardRef<BoardHandle>(function Board(_props, ref) {
   return (
     <canvas
       ref={canvasRef}
-      width={BOARD_WIDTH * CELL_SIZE}
-      height={BOARD_HEIGHT * CELL_SIZE}
+      width={BOARD_WIDTH * cellSize}
+      height={BOARD_HEIGHT * cellSize}
       style={{ background: '#000', border: '2px solid #444', imageRendering: 'pixelated' }}
     />
   )
