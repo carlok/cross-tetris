@@ -1,18 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { ArmPanel, type ArmHighlight } from './components/ArmPanel'
-import type { BoardHandle } from './components/Board'
+import { BOARD_HEIGHT, type BoardHandle } from './components/Board'
 import { PiecePreview } from './components/PiecePreview'
 import { SelectionTimer, type SelectionTimerHandle } from './components/SelectionTimer'
 import { Hud } from './components/Hud'
 import { Controls } from './components/Controls'
+import { Credits } from './components/Credits'
 import { useGameLoop } from './game/useGameLoop'
 import { useKeyboardInput } from './game/useKeyboardInput'
 import { useGamepadInput } from './game/useGamepadInput'
 import { effects } from './game/effects'
 import { initWasm, WasmArm, WasmCrossGame } from './wasm'
 
-const CELL_SIZE = 16
+const OUTER_PADDING = 16
+const GRID_GAP = 8
+// Approximate vertical overhead per stacked well row (label + gap + panel
+// padding) — used only to size cells to fill the viewport, so it doesn't
+// need to be exact, just conservative enough not to overflow.
+const PANEL_CHROME_PER_ROW = 45
+
+// N, the W/E row, and S stack to 3 well-heights tall; size cells so that
+// stack fills the viewport height instead of leaving unused space below.
+function computeCellSize(): number {
+  if (typeof window === 'undefined') return 16
+  const chrome = OUTER_PADDING * 2 + GRID_GAP * 2 + PANEL_CHROME_PER_ROW * 3
+  const available = window.innerHeight - chrome
+  const size = Math.floor(available / (BOARD_HEIGHT * 3))
+  return Math.max(8, Math.min(34, size))
+}
 
 const ARMS = [
   { arm: WasmArm.North, label: 'N' },
@@ -43,6 +59,13 @@ export default function App() {
   const [activeArm, setActiveArm] = useState<WasmArm | null>(null)
   const [nextPieceKind, setNextPieceKind] = useState(0)
   const [armHud, setArmHud] = useState<Record<WasmArm, ArmHud>>(EMPTY_ARM_HUD_MAP)
+  const [cellSize, setCellSize] = useState(computeCellSize)
+
+  useEffect(() => {
+    const onResize = () => setCellSize(computeCellSize())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const gameRef = useRef<WasmCrossGame | null>(null)
   const selectionTimerRef = useRef<SelectionTimerHandle>(null)
@@ -168,13 +191,23 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 24, padding: 24, alignItems: 'flex-start' }}>
+    <div
+      style={{
+        display: 'flex',
+        gap: 24,
+        padding: OUTER_PADDING,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100dvh',
+        boxSizing: 'border-box',
+      }}
+    >
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, auto)',
           gridTemplateRows: 'repeat(3, auto)',
-          gap: 8,
+          gap: GRID_GAP,
           justifyItems: 'center',
           alignItems: 'center',
         }}
@@ -183,7 +216,7 @@ export default function App() {
           <ArmPanel
             ref={boardRefs[WasmArm.North]}
             label="N"
-            cellSize={CELL_SIZE}
+            cellSize={cellSize}
             score={armHud[WasmArm.North].score}
             gameOver={armHud[WasmArm.North].gameOver}
             highlight={highlightFor(WasmArm.North)}
@@ -193,7 +226,7 @@ export default function App() {
           <ArmPanel
             ref={boardRefs[WasmArm.West]}
             label="W"
-            cellSize={CELL_SIZE}
+            cellSize={cellSize}
             score={armHud[WasmArm.West].score}
             gameOver={armHud[WasmArm.West].gameOver}
             highlight={highlightFor(WasmArm.West)}
@@ -218,7 +251,7 @@ export default function App() {
           <ArmPanel
             ref={boardRefs[WasmArm.East]}
             label="E"
-            cellSize={CELL_SIZE}
+            cellSize={cellSize}
             score={armHud[WasmArm.East].score}
             gameOver={armHud[WasmArm.East].gameOver}
             highlight={highlightFor(WasmArm.East)}
@@ -228,17 +261,26 @@ export default function App() {
           <ArmPanel
             ref={boardRefs[WasmArm.South]}
             label="S"
-            cellSize={CELL_SIZE}
+            cellSize={cellSize}
             score={armHud[WasmArm.South].score}
             gameOver={armHud[WasmArm.South].gameOver}
             highlight={highlightFor(WasmArm.South)}
           />
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 24,
+          maxHeight: `calc(100dvh - ${OUTER_PADDING * 2}px)`,
+          overflowY: 'auto',
+        }}
+      >
         <Hud totalScore={totalScore} gameOver={gameOver} nextPieceKind={nextPieceKind} awaitingSelection={awaitingSelection && !aiEnabled} />
         <Controls aiEnabled={aiEnabled} onToggleAi={() => setAiEnabled((v) => !v)} onRestart={startNewGame} />
       </div>
+      <Credits />
     </div>
   )
 }
