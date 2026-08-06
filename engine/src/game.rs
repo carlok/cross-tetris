@@ -5,11 +5,11 @@ use crate::piece::{ActivePiece, PieceKind};
 use crate::rotation::{piece_fits, try_rotate};
 use crate::scoring::{gravity_ms_per_row, line_clear_score, HARD_DROP_POINTS_PER_CELL, SOFT_DROP_POINTS_PER_CELL};
 
-const LOCK_DELAY_MS: f64 = 500.0;
-const MAX_LOCK_RESETS: u32 = 15;
-const SOFT_DROP_MULTIPLIER: f64 = 20.0;
-const LINES_PER_LEVEL: u32 = 10;
-const SPAWN_ROW: i32 = BOARD_HIDDEN_ROWS as i32 - 2;
+pub(crate) const LOCK_DELAY_MS: f64 = 500.0;
+pub(crate) const MAX_LOCK_RESETS: u32 = 15;
+pub(crate) const SOFT_DROP_MULTIPLIER: f64 = 20.0;
+pub(crate) const LINES_PER_LEVEL: u32 = 10;
+pub(crate) const SPAWN_ROW: i32 = BOARD_HIDDEN_ROWS as i32 - 2;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct GameState {

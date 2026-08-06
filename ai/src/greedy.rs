@@ -191,14 +191,51 @@ pub fn play_best_move(state: &mut GameState, weights: &Weights) {
     state.score += drop_distance * engine::scoring::HARD_DROP_POINTS_PER_CELL;
 }
 
-/// Applies the greedy AI independently to every non-topped-out arm of a
-/// `CrossGame` (Mode A: each arm is evaluated and played on its own — no
-/// cross-board strategy yet, per the current milestone's scope).
-pub fn play_best_move_all(cross: &mut CrossGame, weights: &Weights) {
-    for arm in Arm::ALL {
-        let state = cross.arm_mut(arm);
-        if !state.game_over {
-            play_best_move(state, weights);
-        }
+/// A cross-mode placement: which well plus the same rotation/column/row a
+/// single-board `Placement` carries, since choosing the target arm is part
+/// of one placement decision here (spec section 4.1), not a separate step.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct CrossPlacement {
+    pub arm: Arm,
+    pub rotation: Rotation,
+    pub column: i32,
+    pub row: i32,
+}
+
+/// The highest-scoring legal placement for the *upcoming* piece across every
+/// non-topped-out well — the AI evaluates all four boards in parallel and
+/// picks one (arm, rotation, column). `None` if a piece is already falling
+/// (call only while `awaiting_well_selection()`) or every well has topped out.
+pub fn best_cross_placement(cross: &mut CrossGame, weights: &Weights) -> Option<CrossPlacement> {
+    if !cross.awaiting_well_selection() {
+        return None;
     }
+    let kind = *cross.next_queue(1).first()?;
+    Arm::ALL
+        .iter()
+        .copied()
+        .filter(|&arm| !cross.well(arm).game_over)
+        .flat_map(|arm| enumerate_placements(&cross.well(arm).board, kind).into_iter().map(move |piece| (arm, piece)))
+        .map(|(arm, piece)| {
+            let (resulting_board, lines_cleared) = simulate_lock(&cross.well(arm).board, &piece);
+            let features = extract_features(&resulting_board, lines_cleared);
+            (arm, piece, score(&features, weights))
+        })
+        .max_by(|(_, _, a), (_, _, b)| a.partial_cmp(b).unwrap())
+        .map(|(arm, piece, _)| CrossPlacement { arm, rotation: piece.rotation, column: piece.col, row: piece.row })
+}
+
+/// Computes the best cross placement for the upcoming piece, commits it to
+/// that well, and hard-drops it there. No-op if a piece is already falling
+/// or every well has topped out.
+pub fn play_best_cross_move(cross: &mut CrossGame, weights: &Weights) {
+    let Some(placement) = best_cross_placement(cross, weights) else {
+        return;
+    };
+    cross.select_well(placement.arm);
+    let Some(active) = cross.active_piece() else { return };
+    let drop_distance = (placement.row - active.row).max(0) as u32;
+    cross.force_active_placement(placement.rotation, placement.row, placement.column);
+    cross.apply(Action::HardDrop);
+    cross.wells[placement.arm.index()].score += drop_distance * engine::scoring::HARD_DROP_POINTS_PER_CELL;
 }

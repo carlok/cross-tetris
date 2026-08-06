@@ -1,16 +1,24 @@
 import { forwardRef } from 'react'
 import { Board, type BoardHandle } from './Board'
 
+export type ArmHighlight = 'active' | 'selectable' | 'none'
+
 export interface ArmPanelProps {
   label: string
   score: number
   gameOver: boolean
-  selected: boolean
+  highlight: ArmHighlight
   cellSize?: number
 }
 
+const BORDER: Record<ArmHighlight, string> = {
+  active: '2px solid #4dd0e1',
+  selectable: '2px dashed #666',
+  none: '2px solid transparent',
+}
+
 export const ArmPanel = forwardRef<BoardHandle, ArmPanelProps>(function ArmPanel(
-  { label, score, gameOver, selected, cellSize },
+  { label, score, gameOver, highlight, cellSize },
   ref,
 ) {
   return (
@@ -21,7 +29,7 @@ export const ArmPanel = forwardRef<BoardHandle, ArmPanelProps>(function ArmPanel
         alignItems: 'center',
         gap: 4,
         padding: 4,
-        border: selected ? '2px solid #4dd0e1' : '2px solid transparent',
+        border: BORDER[highlight],
         borderRadius: 4,
       }}
     >

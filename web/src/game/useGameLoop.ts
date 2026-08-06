@@ -4,11 +4,13 @@ import type { WasmCrossGame } from '../wasm'
 const AI_STEP_INTERVAL_MS = 500
 
 /**
- * Drives the 4-arm cross game via requestAnimationFrame: ticks gravity/
- * lock-delay on every arm every frame, optionally invokes the greedy AI on
- * all non-topped-out arms on a fixed interval (so it doesn't play instant-
- * perfect every frame), and calls `onFrame` afterward so the caller can
- * repaint each arm's board and sync React state without a rerender per frame.
+ * Drives the cross game via requestAnimationFrame: ticks gravity/lock-delay
+ * for whichever piece is currently falling every frame (a no-op while
+ * awaiting a well selection), optionally invokes the greedy AI on a fixed
+ * interval to pick a well + placement for the next piece (so it doesn't
+ * play instant-perfect every frame), and calls `onFrame` afterward so the
+ * caller can repaint each well's board and sync React state without a
+ * rerender per frame.
  */
 export function useGameLoop(gameRef: RefObject<WasmCrossGame | null>, aiEnabled: boolean, onFrame: () => void) {
   const aiEnabledRef = useRef(aiEnabled)
@@ -31,7 +33,7 @@ export function useGameLoop(gameRef: RefObject<WasmCrossGame | null>, aiEnabled:
           aiAccumMs += dt
           if (aiAccumMs >= AI_STEP_INTERVAL_MS) {
             aiAccumMs = 0
-            game.ai_step_all()
+            game.ai_step()
           }
         } else {
           aiAccumMs = 0

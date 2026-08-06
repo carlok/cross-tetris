@@ -1,4 +1,4 @@
-use ai::{best_placement, play_best_move, play_best_move_all, DEFAULT_WEIGHTS};
+use ai::{best_placement, play_best_cross_move, play_best_move, DEFAULT_WEIGHTS};
 use engine::piece::{ActivePiece, PieceKind, Rotation};
 use engine::rotation::piece_fits;
 use engine::{Arm, CrossGame, GameState, BOARD_TOTAL_HEIGHT, BOARD_WIDTH};
@@ -92,31 +92,59 @@ fn greedy_ai_avoids_an_obviously_worse_placement_with_holes() {
 }
 
 #[test]
-fn play_best_move_all_advances_every_arm_independently() {
+fn play_best_cross_move_places_one_piece_per_call_and_returns_to_awaiting() {
     let mut cross = CrossGame::new(21);
-    let before: Vec<u32> = Arm::ALL.iter().map(|&a| cross.arm(a).lines_cleared_total).collect();
 
     for _ in 0..10 {
-        play_best_move_all(&mut cross, &DEFAULT_WEIGHTS);
+        if cross.is_game_over() {
+            break;
+        }
+        play_best_cross_move(&mut cross, &DEFAULT_WEIGHTS);
+        assert!(cross.awaiting_well_selection(), "each call should place exactly one piece and lock it");
     }
 
     for arm in Arm::ALL {
-        let state = cross.arm(arm);
-        assert!(state.active.is_some() || state.game_over, "{arm:?} should have a legal active piece or be over");
-        if let Some(active) = state.active {
-            assert!(piece_fits(&state.board, &active));
-        }
+        let well = cross.well(arm);
+        assert!(well.board.column_height(0) < 100); // sanity: no panic-induced garbage state
     }
-    let _ = before;
 }
 
 #[test]
-fn play_best_move_all_skips_topped_out_arms() {
+fn play_best_cross_move_never_selects_a_topped_out_well() {
     let mut cross = CrossGame::new(22);
-    cross.arm_mut(Arm::North).game_over = true;
-    let before = cross.arm(Arm::North).clone();
+    cross.wells[Arm::North.index()].game_over = true;
+    let before = cross.well(Arm::North).clone();
 
-    play_best_move_all(&mut cross, &DEFAULT_WEIGHTS);
+    for _ in 0..5 {
+        if cross.is_game_over() {
+            break;
+        }
+        play_best_cross_move(&mut cross, &DEFAULT_WEIGHTS);
+    }
 
-    assert_eq!(cross.arm(Arm::North).clone(), before, "a topped-out arm must not be played");
+    assert_eq!(*cross.well(Arm::North), before, "a topped-out well must never be selected by the AI");
+}
+
+#[test]
+fn play_best_cross_move_chooses_the_well_that_completes_an_obvious_line() {
+    // North's board is one horizontal I away from a line clear; the other
+    // three are empty. The AI should route the I piece to North.
+    let mut cross = CrossGame::new(23);
+    for col in 0..BOARD_WIDTH as i32 {
+        if !(0..4).contains(&col) {
+            cross.wells[Arm::North.index()].board.set(BOTTOM, col, Some(PieceKind::J));
+        }
+    }
+    // Force the upcoming piece to be an I by draining the queue until one is next.
+    while cross.next_queue(1)[0] != PieceKind::I {
+        cross.select_well(Arm::South);
+        // South is otherwise empty, so this always succeeds without topping out.
+        while !cross.awaiting_well_selection() {
+            cross.apply(engine::Action::HardDrop);
+        }
+    }
+
+    play_best_cross_move(&mut cross, &DEFAULT_WEIGHTS);
+
+    assert_eq!(cross.well(Arm::North).lines_cleared_total, 1, "the AI should have routed the I piece to North to clear the line");
 }
