@@ -1,40 +1,42 @@
 import { useEffect, type RefObject } from 'react'
 import { WasmArm, type WasmCrossGame } from '../wasm'
 import { effects } from './effects'
+import { resolveDirection, type ArrowKey, type Semantic } from './controls'
 
-// Direct 1:1 keydown -> action mapping, no DAS/ARR (auto-repeat) tuning in
-// this milestone (documented follow-up). Movement actions always target
-// whichever piece is currently falling — there's only ever one, so no arm
-// targeting is needed (the engine no-ops safely if nothing is falling).
+// No DAS/ARR (auto-repeat) tuning in this milestone (documented follow-up).
+// Directional keys are resolved through controls.ts against whichever arm
+// is currently falling, so they stay screen-relative regardless of the
+// well's rendering orientation. Rotate-CCW (Z), hard drop (Space), and hold
+// (C) aren't directional, so they stay fixed regardless of arm.
 // Hard drop's lock feedback comes from the state-diffed `effects.lock()` in
 // App.tsx (covers hard drop, natural lock, and AI/auto placement uniformly
 // without double-beeping), so it's not triggered directly here.
-const MOVE_ACTIONS: Record<string, (g: WasmCrossGame) => void> = {
-  ArrowLeft: (g) => {
-    g.move_left()
-    effects.move()
-  },
-  ArrowRight: (g) => {
-    g.move_right()
-    effects.move()
-  },
-  ArrowUp: (g) => {
-    g.rotate_cw()
-    effects.rotate()
-  },
-  KeyZ: (g) => {
-    g.rotate_ccw()
-    effects.rotate()
-  },
-  ArrowDown: (g) => {
-    g.soft_drop_start()
-    effects.softDrop()
-  },
-  Space: (g) => g.hard_drop(),
-  KeyC: (g) => {
-    g.hold()
-    effects.hold()
-  },
+const ARROW_KEYS: Record<string, ArrowKey> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+}
+
+function applySemantic(game: WasmCrossGame, semantic: Semantic) {
+  switch (semantic) {
+    case 'moveLeft':
+      game.move_left()
+      effects.move()
+      break
+    case 'moveRight':
+      game.move_right()
+      effects.move()
+      break
+    case 'softDrop':
+      game.soft_drop_start()
+      effects.softDrop()
+      break
+    case 'rotateCw':
+      game.rotate_cw()
+      effects.rotate()
+      break
+  }
 }
 
 // Number keys 1-4 commit the next queued piece to a well.
@@ -75,17 +77,35 @@ export function useKeyboardInput(gameRef: RefObject<WasmCrossGame | null>, enabl
         return
       }
 
-      const action = MOVE_ACTIONS[event.code]
-      if (action) {
+      const arrow = ARROW_KEYS[event.code]
+      if (arrow) {
         event.preventDefault()
-        action(game)
+        const arm = game.active_arm()
+        if (arm >= 0) applySemantic(game, resolveDirection(arm as WasmArm, arrow))
+        return
+      }
+
+      if (event.code === 'KeyZ') {
+        event.preventDefault()
+        game.rotate_ccw()
+        effects.rotate()
+      } else if (event.code === 'Space') {
+        event.preventDefault()
+        game.hard_drop()
+      } else if (event.code === 'KeyC') {
+        event.preventDefault()
+        game.hold()
+        effects.hold()
       }
     }
 
     const handleKeyUp = (event: KeyboardEvent) => {
       const game = gameRef.current
       if (!game) return
-      if (event.code === 'ArrowDown') {
+      const arrow = ARROW_KEYS[event.code]
+      if (!arrow) return
+      const arm = game.active_arm()
+      if (arm >= 0 && resolveDirection(arm as WasmArm, arrow) === 'softDrop') {
         game.soft_drop_end()
       }
     }

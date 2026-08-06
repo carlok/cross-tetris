@@ -11,8 +11,10 @@ export function Controls({ aiEnabled, onToggleAi, onRestart }: ControlsProps) {
       <button onClick={onRestart}>Restart</button>
       <div style={{ fontFamily: 'monospace', fontSize: 12, opacity: 0.7 }}>
         <div>Arrows or 1-4: send next piece to N/E/S/W</div>
-        <div>Arrows: move / rotate (once falling)</div>
-        <div>Down: soft drop</div>
+        <div>Arrows (once falling): screen-relative —</div>
+        <div>toward the fall = soft drop, away = rotate,</div>
+        <div>the other two = move</div>
+        <div>Z: rotate CCW</div>
         <div>Space: hard drop</div>
         <div>C: hold</div>
         <div style={{ marginTop: 6, opacity: 0.6 }}>

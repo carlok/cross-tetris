@@ -58,19 +58,33 @@ Open the printed local URL. Controls:
 | Key | Action |
 |---|---|
 | Arrows or 1/2/3/4 | send the next queued piece to North/East/South/West (arrows match the layout: Up=N, Right=E, Down=S, Left=W) |
-| ← / → | move the currently falling piece |
-| ↑ | rotate CW |
-| Z | rotate CCW |
-| ↓ | soft drop |
+| Arrows | once a piece is falling: screen-relative move / soft-drop / rotate — see below |
+| Z | rotate CCW (fixed, same key regardless of well) |
 | Space | hard drop |
 | C | hold (per-well hold slot) |
 
 Each well is oriented so pieces spawn near the cross center and fall
 outward, toward the well's own "floor" at the far tip of that arm: North
 falls upward, South downward, West leftward, East rightward (East/West
-render landscape to match). Movement keys (arrows) always mean the same
-thing regardless of orientation — "move left/right" in engine terms — the
-visual axis that corresponds to just depends on which well is active.
+render landscape to match). Arrow keys stay **screen-relative** regardless
+of which well is active — pressing the key pointing toward that well's fall
+direction accelerates the fall (soft drop), the opposite key rotates CW, and
+the two keys perpendicular to the fall direction move the piece side to
+side (`web/src/game/controls.ts`):
+
+| Well | Toward-fall (soft drop) | Away-from-fall (rotate CW) | Perpendicular (move) |
+|---|---|---|---|
+| South | Down | Up | Left / Right |
+| North | Up | Down | Left / Right (swapped vs. South) |
+| West | Left | Right | Up / Down |
+| East | Right | Left | Up / Down |
+
+South needs no remapping (gravity points screen-down, same as the engine's
+own down-is-down model); the other three are derived directly from
+Board.tsx's rendering transform, not guessed — engine `move_left`/
+`move_right` don't always mean screen-left/right once a well is rotated, so
+binding the physical arrow keys to a fixed engine action (as an earlier pass
+did) only felt right for South.
 
 Arrow keys double as well-selection and movement — never ambiguous, since a
 piece only starts falling after a well is picked, so the two meanings never

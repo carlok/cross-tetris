@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { WasmArm, type WasmCrossGame } from '../wasm'
 import { effects } from './effects'
 import { getPrimaryGamepad } from './gamepad'
+import { resolveDirection, type ArrowKey, type Semantic } from './controls'
 
 // Standard gamepad mapping (W3C "standard" layout — Xbox/PS-style pads).
 const BUTTON = {
@@ -18,12 +19,36 @@ const BUTTON = {
 const STICK_DEADZONE = 0.5
 const POLL_INTERVAL_MS = 50 // 20Hz is plenty for discrete button edges
 
+function applySemantic(game: WasmCrossGame, semantic: Semantic) {
+  switch (semantic) {
+    case 'moveLeft':
+      game.move_left()
+      effects.move()
+      break
+    case 'moveRight':
+      game.move_right()
+      effects.move()
+      break
+    case 'softDrop':
+      game.soft_drop_start()
+      effects.softDrop()
+      break
+    case 'rotateCw':
+      game.rotate_cw()
+      effects.rotate()
+      break
+  }
+}
+
 /**
  * Polls the Gamepad API (no event-based API exists for button presses) and
- * mirrors the same actions as `useKeyboardInput`. D-pad/left-stick double as
- * well selection while awaiting one (Up=N, Right=E, Down=S, Left=W) and as
- * movement once a piece is falling — same non-conflict reasoning as the
- * keyboard arrows, since the two never apply at the same time.
+ * mirrors `useKeyboardInput`: D-pad/left-stick double as well selection
+ * while awaiting one (Up=N, Right=E, Down=S, Left=W, spatially matching the
+ * cross layout) and as screen-relative movement once a piece is falling,
+ * resolved per-arm through controls.ts — same non-conflict reasoning as the
+ * keyboard arrows, since selection and movement never apply at the same
+ * time. Y/B are fixed rotate CW/CCW buttons (not directional, so no
+ * per-arm resolution needed — same as the keyboard's Z key).
  */
 export function useGamepadInput(gameRef: RefObject<WasmCrossGame | null>, enabled: boolean) {
   const wasPressed = useRef<Record<string, boolean>>({})
@@ -59,18 +84,22 @@ export function useGamepadInput(gameRef: RefObject<WasmCrossGame | null>, enable
         onPress('down', down, () => game.select_well(WasmArm.South))
         onPress('left', left, () => game.select_well(WasmArm.West))
       } else {
-        onPress('left', left, () => {
-          game.move_left()
-          effects.move()
-        })
-        onPress('right', right, () => {
-          game.move_right()
-          effects.move()
-        })
-        onPress('up', up, () => {
-          game.rotate_cw()
-          effects.rotate()
-        })
+        const arm = game.active_arm()
+        const directions: [ArrowKey, boolean][] = [
+          ['up', up],
+          ['down', down],
+          ['left', left],
+          ['right', right],
+        ]
+        let softDropDown = false
+        for (const [dir, isDown] of directions) {
+          const semantic = arm >= 0 ? resolveDirection(arm as WasmArm, dir) : null
+          if (semantic === 'softDrop' && isDown) softDropDown = true
+          onPress(dir, isDown, () => {
+            if (semantic) applySemantic(game, semantic)
+          })
+        }
+
         onPress('Y', pressed(BUTTON.Y), () => {
           game.rotate_cw()
           effects.rotate()
@@ -87,11 +116,9 @@ export function useGamepadInput(gameRef: RefObject<WasmCrossGame | null>, enable
           game.hard_drop()
         })
 
-        if (down && !softDropHeld.current) {
-          game.soft_drop_start()
-          effects.softDrop()
+        if (softDropDown && !softDropHeld.current) {
           softDropHeld.current = true
-        } else if (!down && softDropHeld.current) {
+        } else if (!softDropDown && softDropHeld.current) {
           game.soft_drop_end()
           softDropHeld.current = false
         }
