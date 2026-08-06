@@ -245,3 +245,57 @@ fn there_is_always_at_least_one_selectable_well_among_open_ones() {
         );
     }
 }
+
+#[test]
+fn spawn_rotation_compensates_each_arms_view_transform() {
+    // South is the identity view, so it spawns at the plain canonical R0
+    // rotation; the other three spawn pre-rotated so that, once the web UI
+    // rotates the whole well for rendering, the piece still *appears*
+    // canonical rather than pre-rotated (see spawn_rotation's doc comment
+    // in cross.rs for the full derivation).
+    use engine::piece::Rotation;
+
+    let mut south = CrossGame::new(40);
+    south.select_well(Arm::South);
+    assert_eq!(south.active_piece().unwrap().rotation, Rotation::R0);
+
+    let mut north = CrossGame::new(41);
+    north.select_well(Arm::North);
+    assert_eq!(north.active_piece().unwrap().rotation, Rotation::R2);
+
+    let mut west = CrossGame::new(42);
+    west.select_well(Arm::West);
+    assert_eq!(west.active_piece().unwrap().rotation, Rotation::L);
+
+    let mut east = CrossGame::new(43);
+    east.select_well(Arm::East);
+    assert_eq!(east.active_piece().unwrap().rotation, Rotation::R);
+}
+
+#[test]
+fn every_piece_kind_fits_at_spawn_in_every_arm() {
+    // The compensating spawn rotation changes which cells a piece occupies
+    // at spawn; confirm this never causes an unexpected top-out for any of
+    // the 7 kinds in any of the 4 arms (the spawn area should be empty on a
+    // fresh well regardless of rotation state).
+    for seed in 0..30 {
+        let mut cross = CrossGame::new(seed);
+        for arm in Arm::ALL {
+            if !cross.select_well(arm) {
+                continue; // imbalance limit or already active; fine, just skip
+            }
+            assert!(!cross.well(arm).game_over, "{arm:?} should not top out spawning into an empty well");
+            cross.apply(Action::HardDrop);
+        }
+    }
+}
+
+#[test]
+fn hold_respawn_also_uses_the_compensating_rotation() {
+    use engine::piece::Rotation;
+
+    let mut cross = CrossGame::new(44);
+    cross.select_well(Arm::West);
+    cross.apply(Action::Hold); // hold is empty, so this draws a fresh piece from the bag
+    assert_eq!(cross.active_piece().unwrap().rotation, Rotation::L, "hold's fresh spawn should also compensate West's view transform");
+}

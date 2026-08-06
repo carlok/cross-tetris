@@ -84,6 +84,37 @@ struct ActiveInWell {
     piece: ActivePiece,
 }
 
+/// The engine rotation state a piece must spawn in for `arm` so that, once
+/// the web UI's per-arm rendering transform (Board.tsx) is applied, it
+/// *appears* in the same canonical look a South-well spawn has — rather
+/// than appearing pre-rotated by that arm's view transform.
+///
+/// The web UI renders each arm's board through a transform that redirects
+/// gravity toward that arm's outer tip: South is the identity (no visual
+/// rotation), North is a 180° rotation, West is 90° CW, East is 90° CCW
+/// (verified to be genuine geometric rotations, not reflections — see the
+/// commit that fixed the earlier mirroring bug). Engine `Rotation::cw()`
+/// (the R0→R→R2→L→R0 cycle) is itself a real 90° CW rotation in the same
+/// (row=y-down, col=x-right) convention the view transforms use — confirmed
+/// by checking the T-piece's R0 shape rotated by the standard image-CW
+/// formula against `rotation::shape`'s actual R state, which match exactly.
+///
+/// Since both are genuine rotations in the same convention, composing them
+/// is just rotation arithmetic: to cancel out a view transform V and end up
+/// with the canonical R0 appearance, the piece must spawn at V⁻¹(R0):
+///   South: V = identity        → spawn R0
+///   North: V = 180°            → spawn R0 rotated 180° = R2
+///   West:  V = 90° CW          → spawn R0 rotated 90° CCW (CW⁻¹) = L
+///   East:  V = 90° CCW         → spawn R0 rotated 90° CW (CCW⁻¹) = R
+fn spawn_rotation(arm: Arm) -> Rotation {
+    match arm {
+        Arm::South => Rotation::R0,
+        Arm::North => Rotation::R2,
+        Arm::West => Rotation::L,
+        Arm::East => Rotation::R,
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct CrossGame {
     pub wells: [Well; 4],
@@ -187,7 +218,8 @@ impl CrossGame {
     }
 
     fn spawn_in_well(&mut self, arm: Arm, kind: PieceKind) {
-        let piece = ActivePiece::spawn(kind, SPAWN_ROW);
+        let mut piece = ActivePiece::spawn(kind, SPAWN_ROW);
+        piece.rotation = spawn_rotation(arm);
         let well = &mut self.wells[arm.index()];
         if !piece_fits(&well.board, &piece) {
             well.game_over = true;
@@ -316,7 +348,8 @@ impl CrossGame {
             Some(k) => k,
             None => self.bag.next(),
         };
-        let piece = ActivePiece::spawn(kind, SPAWN_ROW);
+        let mut piece = ActivePiece::spawn(kind, SPAWN_ROW);
+        piece.rotation = spawn_rotation(a.arm);
         let well = &mut self.wells[a.arm.index()];
         if !piece_fits(&well.board, &piece) {
             well.game_over = true;
