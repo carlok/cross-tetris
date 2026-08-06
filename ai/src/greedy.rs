@@ -203,9 +203,11 @@ pub struct CrossPlacement {
 }
 
 /// The highest-scoring legal placement for the *upcoming* piece across every
-/// non-topped-out well — the AI evaluates all four boards in parallel and
-/// picks one (arm, rotation, column). `None` if a piece is already falling
-/// (call only while `awaiting_well_selection()`) or every well has topped out.
+/// selectable well (not topped out, not already over the max well-imbalance
+/// limit — see `CrossGame::is_well_selectable`) — the AI evaluates all
+/// eligible boards in parallel and picks one (arm, rotation, column). `None`
+/// if a piece is already falling (call only while `awaiting_well_selection()`)
+/// or no well is currently selectable.
 pub fn best_cross_placement(cross: &mut CrossGame, weights: &Weights) -> Option<CrossPlacement> {
     if !cross.awaiting_well_selection() {
         return None;
@@ -214,7 +216,7 @@ pub fn best_cross_placement(cross: &mut CrossGame, weights: &Weights) -> Option<
     Arm::ALL
         .iter()
         .copied()
-        .filter(|&arm| !cross.well(arm).game_over)
+        .filter(|&arm| cross.is_well_selectable(arm))
         .flat_map(|arm| enumerate_placements(&cross.well(arm).board, kind).into_iter().map(move |piece| (arm, piece)))
         .map(|(arm, piece)| {
             let (resulting_board, lines_cleared) = simulate_lock(&cross.well(arm).board, &piece);

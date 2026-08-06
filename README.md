@@ -65,9 +65,24 @@ overlap in time. Movement keys always act on whichever piece is currently
 falling (there's only ever one). If you don't pick a well within
 `SELECTION_TIMEOUT_MS` (5s, `engine/src/cross.rs`), one is chosen at random
 from a deterministic RNG stream — shown as a countdown bar under the next-
-piece preview. Click **Switch to AI** to hand the queue to the greedy
-rule-based AI, which evaluates all four wells for each piece and routes it
-to the best one (`ai_step()` on an interval, one placement per step).
+piece preview. A well more than `MAX_WELL_IMBALANCE` (8) pieces ahead of the
+least-used well is temporarily blocked from selection (shown dashed red) —
+keeps the queue from being dumped entirely into one well. Click **Switch to
+AI** to hand the queue to the greedy rule-based AI, which evaluates every
+selectable well for each piece and routes it to the best one (`ai_step()` on
+an interval, one placement per step).
+
+**Gamepad**: any standard-mapping pad (Xbox/PS-style) works once a button is
+pressed — D-pad or left stick for well-selection/movement (same spatial
+mapping as the arrow keys), A = hard drop, Y or B = rotate CW/CCW, X = hold.
+Polled via the Gamepad API (no press-and-release events exist for it) at
+20Hz. Vibration fires on lock/line-clear/game-over where the browser and pad
+support it (best-effort, silently does nothing otherwise).
+
+**Sound**: every action gets a short synthesized tone via Web Audio (no
+asset files) — move, rotate, soft drop, hold, well selection, piece lock,
+line clear, game over. Starts once the page has heard a user gesture (a key
+press or gamepad button), per browser autoplay policy.
 
 ## Run the tests
 
@@ -82,10 +97,14 @@ Standard SRS rotation + wall kicks, 7-bag randomizer (seeded, deterministic),
 gravity/lock delay/soft/hard drop, line clears + scoring, top-out, hold — per
 well. `CrossGame` holds one shared bag and routes its single active piece to
 whichever well is selected; each well keeps its own board/score/level/hold/
-top-out flag. A one-ply greedy AI scores every (well, rotation, column)
+top-out/pieces-placed count. A well can't be selected once it's more than
+`MAX_WELL_IMBALANCE` pieces ahead of the least-used well (`is_well_selectable`,
+enforced by both `select_well` and the AI's search — never just a UI-layer
+suggestion). A one-ply greedy AI scores every (well, rotation, column)
 combination for the upcoming piece on aggregate height, holes, bumpiness,
-height variance, and lines cleared, and picks the argmax across all four
-wells at once.
+height variance, and lines cleared, and picks the argmax across all
+selectable wells at once. Keyboard and gamepad input, synthesized sound
+effects, and best-effort gamepad vibration.
 
 ## What's not (yet)
 

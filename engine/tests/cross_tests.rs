@@ -181,3 +181,67 @@ fn move_and_rotate_stay_within_the_selected_wells_board() {
     let piece = cross.active_piece().unwrap();
     assert!(engine::rotation::piece_fits(&cross.well(Arm::South).board, &piece));
 }
+
+fn place_one_piece(cross: &mut CrossGame, arm: Arm) -> bool {
+    if !cross.select_well(arm) {
+        return false;
+    }
+    cross.apply(Action::HardDrop);
+    true
+}
+
+#[test]
+fn well_becomes_unselectable_once_it_leads_by_max_imbalance() {
+    let mut cross = CrossGame::new(30);
+    for _ in 0..engine::cross::MAX_WELL_IMBALANCE {
+        assert!(place_one_piece(&mut cross, Arm::North));
+    }
+    assert_eq!(cross.well(Arm::North).pieces_placed, engine::cross::MAX_WELL_IMBALANCE);
+    assert!(!cross.is_well_selectable(Arm::North), "North is now MAX_WELL_IMBALANCE ahead of the untouched wells");
+    assert!(!cross.select_well(Arm::North), "selecting an over-imbalanced well must fail");
+    assert!(cross.is_well_selectable(Arm::East), "other wells remain selectable");
+}
+
+#[test]
+fn placing_in_other_wells_reopens_the_leading_well() {
+    let mut cross = CrossGame::new(31);
+    for _ in 0..engine::cross::MAX_WELL_IMBALANCE {
+        assert!(place_one_piece(&mut cross, Arm::North));
+    }
+    assert!(!cross.is_well_selectable(Arm::North));
+
+    // The rule compares against the single least-used well, so *every*
+    // other well needs to catch up by one before the global minimum rises.
+    for arm in [Arm::East, Arm::South, Arm::West] {
+        assert!(place_one_piece(&mut cross, arm));
+    }
+
+    assert!(cross.is_well_selectable(Arm::North), "North should be selectable again once the least-used well catches up by one");
+}
+
+#[test]
+fn auto_selection_never_picks_an_over_imbalanced_well() {
+    let mut cross = CrossGame::new(32);
+    for _ in 0..engine::cross::MAX_WELL_IMBALANCE {
+        assert!(place_one_piece(&mut cross, Arm::North));
+    }
+    cross.apply(Action::Tick(engine::cross::SELECTION_TIMEOUT_MS));
+    assert_ne!(cross.active_arm(), Some(Arm::North), "auto-select must not pick an over-imbalanced well");
+}
+
+#[test]
+fn there_is_always_at_least_one_selectable_well_among_open_ones() {
+    let mut cross = CrossGame::new(33);
+    // Hammer North far past the limit by alternating attempts across all
+    // arms; the rule must never leave every non-topped-out well blocked.
+    for i in 0..50 {
+        let arm = Arm::ALL[i % 4];
+        if cross.is_well_selectable(arm) {
+            place_one_piece(&mut cross, arm);
+        }
+        assert!(
+            Arm::ALL.iter().any(|&a| cross.is_well_selectable(a)),
+            "at least one well must always remain selectable while none has topped out"
+        );
+    }
+}

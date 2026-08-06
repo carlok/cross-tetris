@@ -156,9 +156,25 @@ impl WasmCrossGame {
     }
 
     /// Commits the next queued piece to `arm`. Returns `false` (no-op) if a
-    /// piece is already falling or that well has topped out.
+    /// piece is already falling, that well has topped out, or it's too far
+    /// ahead of the least-used well (see `is_well_selectable`).
     pub fn select_well(&mut self, arm: WasmArm) -> bool {
         self.cross.select_well(arm.into())
+    }
+
+    /// Whether `arm` may currently receive the next piece — false if it's
+    /// topped out, or already `MAX_WELL_IMBALANCE` pieces ahead of the
+    /// least-used well. The UI should gray out non-selectable wells.
+    pub fn is_well_selectable(&self, arm: WasmArm) -> bool {
+        self.cross.is_well_selectable(arm.into())
+    }
+
+    pub fn pieces_placed(&self, arm: WasmArm) -> u32 {
+        self.cross.well(arm.into()).pieces_placed
+    }
+
+    pub fn max_well_imbalance(&self) -> u32 {
+        engine::cross::MAX_WELL_IMBALANCE
     }
 
     /// The well currently holding the falling piece, or `-1` if none.
@@ -231,6 +247,17 @@ impl WasmCrossGame {
 
     pub fn total_score(&self) -> u32 {
         self.cross.total_score()
+    }
+
+    /// Monotonically increasing across the whole game — useful for the UI
+    /// to detect "a piece just locked" (human, AI, or auto-selected) without
+    /// caring which well or who triggered it.
+    pub fn total_pieces_placed(&self) -> u32 {
+        self.cross.total_pieces_placed()
+    }
+
+    pub fn total_lines_cleared(&self) -> u32 {
+        self.cross.total_lines_cleared()
     }
 
     pub fn level(&self, arm: WasmArm) -> u32 {

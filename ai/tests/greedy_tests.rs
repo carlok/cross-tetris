@@ -148,3 +148,30 @@ fn play_best_cross_move_chooses_the_well_that_completes_an_obvious_line() {
 
     assert_eq!(cross.well(Arm::North).lines_cleared_total, 1, "the AI should have routed the I piece to North to clear the line");
 }
+
+#[test]
+fn ai_never_selects_a_well_over_the_imbalance_limit() {
+    let mut cross = CrossGame::new(24);
+    // Drive North to the imbalance ceiling.
+    for _ in 0..engine::cross::MAX_WELL_IMBALANCE {
+        cross.select_well(Arm::North);
+        cross.apply(engine::Action::HardDrop);
+    }
+    assert!(!cross.is_well_selectable(Arm::North));
+
+    for _ in 0..10 {
+        if cross.is_game_over() {
+            break;
+        }
+        play_best_cross_move(&mut cross, &DEFAULT_WEIGHTS);
+        assert_ne!(cross.active_arm(), Some(Arm::North), "AI must not pick the over-imbalanced well");
+        if let Some(arm) = cross.active_arm() {
+            // AI acts atomically (select+drop), so active_arm should be
+            // None again immediately; guard anyway for future changes.
+            cross.apply(engine::Action::HardDrop);
+            let _ = arm;
+        }
+    }
+
+    assert_eq!(cross.well(Arm::North).pieces_placed, engine::cross::MAX_WELL_IMBALANCE, "North must not have received any more pieces");
+}

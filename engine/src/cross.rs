@@ -26,6 +26,12 @@ use crate::Action;
 /// pressure the way normal gravity does within a well).
 pub const SELECTION_TIMEOUT_MS: f64 = 5000.0;
 
+/// Maximum allowed difference between the most- and least-used well's piece
+/// count. Keeps the player (or AI) from dumping the entire queue into one
+/// well and ignoring the other three — once a well is this far ahead of the
+/// least-used well, it's excluded from selection until the others catch up.
+pub const MAX_WELL_IMBALANCE: u32 = 8;
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Arm {
     North,
@@ -55,6 +61,7 @@ pub struct Well {
     pub lines_cleared_total: u32,
     pub hold: Option<PieceKind>,
     pub game_over: bool,
+    pub pieces_placed: u32,
 }
 
 impl Well {
@@ -66,6 +73,7 @@ impl Well {
             lines_cleared_total: 0,
             hold: None,
             game_over: false,
+            pieces_placed: 0,
         }
     }
 }
@@ -150,12 +158,27 @@ impl CrossGame {
         self.bag.preview(n)
     }
 
+    fn min_pieces_placed(&self) -> u32 {
+        self.wells.iter().map(|w| w.pieces_placed).min().unwrap_or(0)
+    }
+
+    /// Whether `arm` may currently receive the next piece: not topped out,
+    /// and not already far enough ahead of the least-used well to violate
+    /// `MAX_WELL_IMBALANCE`. There's always at least one selectable well
+    /// among the non-topped-out ones (the least-used one is always exactly
+    /// at the limit boundary, never past it).
+    pub fn is_well_selectable(&self, arm: Arm) -> bool {
+        let well = &self.wells[arm.index()];
+        !well.game_over && well.pieces_placed < self.min_pieces_placed() + MAX_WELL_IMBALANCE
+    }
+
     /// Commits the next piece from the shared queue to `arm`. Fails (returns
-    /// `false`, no state change) if a piece is already falling or that well
-    /// has topped out. If the well can't legally hold a fresh spawn, the well
-    /// tops out and the piece is consumed but never becomes active.
+    /// `false`, no state change) if a piece is already falling, that well
+    /// has topped out, or selecting it would exceed `MAX_WELL_IMBALANCE`. If
+    /// the well can't legally hold a fresh spawn, the well tops out and the
+    /// piece is consumed but never becomes active.
     pub fn select_well(&mut self, arm: Arm) -> bool {
-        if self.active.is_some() || self.wells[arm.index()].game_over {
+        if self.active.is_some() || !self.is_well_selectable(arm) {
             return false;
         }
         let kind = self.bag.next();
@@ -184,7 +207,7 @@ impl CrossGame {
     /// that's about to be drawn from the queue (called when the selection
     /// timer expires). No-op if every well has topped out.
     fn auto_select_well(&mut self) {
-        let open: Vec<Arm> = Arm::ALL.into_iter().filter(|&arm| !self.wells[arm.index()].game_over).collect();
+        let open: Vec<Arm> = Arm::ALL.into_iter().filter(|&arm| self.is_well_selectable(arm)).collect();
         if open.is_empty() {
             return;
         }
@@ -235,6 +258,7 @@ impl CrossGame {
         well.score += line_clear_score(cleared, well.level);
         well.lines_cleared_total += cleared;
         well.level = well.lines_cleared_total / LINES_PER_LEVEL + 1;
+        well.pieces_placed += 1;
         self.active = None;
         self.soft_dropping = false;
     }
@@ -361,6 +385,17 @@ impl CrossGame {
 
     pub fn total_score(&self) -> u32 {
         self.wells.iter().map(|w| w.score).sum()
+    }
+
+    /// Total pieces locked across all wells — a monotonically increasing
+    /// counter, handy for detecting "a piece just locked" regardless of
+    /// which well or whether it was human, AI, or timeout-driven.
+    pub fn total_pieces_placed(&self) -> u32 {
+        self.wells.iter().map(|w| w.pieces_placed).sum()
+    }
+
+    pub fn total_lines_cleared(&self) -> u32 {
+        self.wells.iter().map(|w| w.lines_cleared_total).sum()
     }
 
     /// The game ends when any single well tops out.
