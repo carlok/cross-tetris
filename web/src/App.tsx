@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { ArmPanel, type ArmHighlight } from './components/ArmPanel'
 import type { BoardHandle } from './components/Board'
+import { PiecePreview } from './components/PiecePreview'
 import { Hud } from './components/Hud'
 import { Controls } from './components/Controls'
 import { useGameLoop } from './game/useGameLoop'
@@ -158,7 +159,20 @@ export default function App() {
             highlight={highlightFor(WasmArm.West)}
           />
         </div>
-        <div style={{ gridColumn: 2, gridRow: 2, fontFamily: 'monospace', fontSize: 12, opacity: 0.5 }}>+</div>
+        <div
+          style={{
+            gridColumn: 2,
+            gridRow: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+            opacity: awaitingSelection ? 1 : 0.35,
+          }}
+        >
+          <div style={{ fontFamily: 'monospace', fontSize: 9, opacity: 0.6 }}>NEXT</div>
+          <PiecePreview kind={nextPieceKind} cellSize={12} />
+        </div>
         <div style={{ gridColumn: 3, gridRow: 2 }}>
           <ArmPanel
             ref={boardRefs[WasmArm.East]}
