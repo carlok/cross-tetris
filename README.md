@@ -25,7 +25,13 @@ ai/       greedy one-ply rule-based AI, depends on engine. best_cross_placement
 wasm/     wasm-bindgen bridge exposing engine+ai to JS, zero game logic of its
           own. WasmGame (single board) and WasmCrossGame (4-well cross) both
           exposed.
-web/      Vite + React + TypeScript UI — cross-shaped 4-well layout.
+web/      Vite + React + TypeScript UI — cross-shaped 4-well layout. East/
+          West render landscape; all four wells' rendering (Board.tsx)
+          applies a per-arm transform so pieces visually spawn near the
+          cross center and fall outward — the engine's board model itself
+          is always the same orientation regardless of arm (spec's
+          "canonical internal orientation," reused verbatim, only the
+          paint step differs).
 ```
 
 ## Prerequisites
@@ -58,6 +64,13 @@ Open the printed local URL. Controls:
 | ↓ | soft drop |
 | Space | hard drop |
 | C | hold (per-well hold slot) |
+
+Each well is oriented so pieces spawn near the cross center and fall
+outward, toward the well's own "floor" at the far tip of that arm: North
+falls upward, South downward, West leftward, East rightward (East/West
+render landscape to match). Movement keys (arrows) always mean the same
+thing regardless of orientation — "move left/right" in engine terms — the
+visual axis that corresponds to just depends on which well is active.
 
 Arrow keys double as well-selection and movement — never ambiguous, since a
 piece only starts falling after a well is picked, so the two meanings never

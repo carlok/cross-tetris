@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import { Board, type BoardHandle } from './Board'
+import { Board, type BoardHandle, type GravityDirection } from './Board'
 
 export type ArmHighlight = 'active' | 'selectable' | 'blocked' | 'none'
 
@@ -9,6 +9,7 @@ export interface ArmPanelProps {
   gameOver: boolean
   highlight: ArmHighlight
   cellSize?: number
+  gravityDirection: GravityDirection
 }
 
 const BORDER: Record<ArmHighlight, string> = {
@@ -26,7 +27,7 @@ const OPACITY: Record<ArmHighlight, number> = {
 }
 
 export const ArmPanel = forwardRef<BoardHandle, ArmPanelProps>(function ArmPanel(
-  { label, score, gameOver, highlight, cellSize },
+  { label, score, gameOver, highlight, cellSize, gravityDirection },
   ref,
 ) {
   return (
@@ -46,7 +47,7 @@ export const ArmPanel = forwardRef<BoardHandle, ArmPanelProps>(function ArmPanel
         {label} {score}
         {gameOver ? ' — OVER' : highlight === 'blocked' ? ' (wait)' : ''}
       </div>
-      <Board ref={ref} cellSize={cellSize} />
+      <Board ref={ref} cellSize={cellSize} gravityDirection={gravityDirection} />
     </div>
   )
 })

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { ArmPanel, type ArmHighlight } from './components/ArmPanel'
-import { BOARD_HEIGHT, type BoardHandle } from './components/Board'
+import { BOARD_HEIGHT, BOARD_WIDTH, type BoardHandle, type GravityDirection } from './components/Board'
 import { PiecePreview } from './components/PiecePreview'
 import { SelectionTimer, type SelectionTimerHandle } from './components/SelectionTimer'
 import { Hud } from './components/Hud'
@@ -20,21 +20,25 @@ const GRID_GAP = 8
 // need to be exact, just conservative enough not to overflow.
 const PANEL_CHROME_PER_ROW = 45
 
-// N, the W/E row, and S stack to 3 well-heights tall; size cells so that
-// stack fills the viewport height instead of leaving unused space below.
+// N and S stack full board-heights; the middle row is only as tall as the
+// landscape-oriented E/W wells (BOARD_WIDTH cells, not BOARD_HEIGHT). Size
+// cells so that stack fills the viewport height instead of leaving unused
+// space below.
 function computeCellSize(): number {
   if (typeof window === 'undefined') return 16
   const chrome = OUTER_PADDING * 2 + GRID_GAP * 2 + PANEL_CHROME_PER_ROW * 3
   const available = window.innerHeight - chrome
-  const size = Math.floor(available / (BOARD_HEIGHT * 3))
+  const size = Math.floor(available / (BOARD_HEIGHT * 2 + BOARD_WIDTH))
   return Math.max(8, Math.min(34, size))
 }
 
+// Pieces spawn near the center-facing edge of each well and fall outward,
+// away from the cross center (see Board.tsx's GravityDirection docs).
 const ARMS = [
-  { arm: WasmArm.North, label: 'N' },
-  { arm: WasmArm.East, label: 'E' },
-  { arm: WasmArm.South, label: 'S' },
-  { arm: WasmArm.West, label: 'W' },
+  { arm: WasmArm.North, label: 'N', gravityDirection: 'up' as GravityDirection },
+  { arm: WasmArm.East, label: 'E', gravityDirection: 'right' as GravityDirection },
+  { arm: WasmArm.South, label: 'S', gravityDirection: 'down' as GravityDirection },
+  { arm: WasmArm.West, label: 'W', gravityDirection: 'left' as GravityDirection },
 ] as const
 
 type ArmHud = { score: number; gameOver: boolean; selectable: boolean }
@@ -220,6 +224,7 @@ export default function App() {
             score={armHud[WasmArm.North].score}
             gameOver={armHud[WasmArm.North].gameOver}
             highlight={highlightFor(WasmArm.North)}
+            gravityDirection="up"
           />
         </div>
         <div style={{ gridColumn: 1, gridRow: 2 }}>
@@ -230,6 +235,7 @@ export default function App() {
             score={armHud[WasmArm.West].score}
             gameOver={armHud[WasmArm.West].gameOver}
             highlight={highlightFor(WasmArm.West)}
+            gravityDirection="left"
           />
         </div>
         <div
@@ -255,6 +261,7 @@ export default function App() {
             score={armHud[WasmArm.East].score}
             gameOver={armHud[WasmArm.East].gameOver}
             highlight={highlightFor(WasmArm.East)}
+            gravityDirection="right"
           />
         </div>
         <div style={{ gridColumn: 2, gridRow: 3 }}>
@@ -265,6 +272,7 @@ export default function App() {
             score={armHud[WasmArm.South].score}
             gameOver={armHud[WasmArm.South].gameOver}
             highlight={highlightFor(WasmArm.South)}
+            gravityDirection="down"
           />
         </div>
       </div>

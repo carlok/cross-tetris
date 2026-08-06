@@ -7,16 +7,36 @@ export const BOARD_HEIGHT = 20
 // index 0 = empty; 1..=7 = I, J, L, O, S, Z, T (matches engine::PieceKind::as_u8)
 const COLORS = ['#4dd0e1', '#3f51b5', '#ff9800', '#ffeb3b', '#4caf50', '#f44336', '#9c27b0']
 
+/**
+ * Which screen direction increasing engine row (gravity's axis) maps to.
+ * The engine's board model is always the same 10-wide x 20-tall grid with
+ * gravity pulling toward row 19, regardless of which cross arm it's in
+ * (the "canonical internal orientation" the project spec calls for) — this
+ * is purely a rendering transform, so pieces visually spawn near the
+ * center-facing edge of their well and fall outward, away from the center:
+ * North falls upward (entry at the bottom, near the center), South falls
+ * downward (entry at the top), East falls rightward (entry at the left,
+ * landscape), West falls leftward (entry at the right, landscape).
+ */
+export type GravityDirection = 'down' | 'up' | 'left' | 'right'
+
 export interface BoardHandle {
   draw(buffer: Uint8Array): void
 }
 
 export interface BoardProps {
   cellSize?: number
+  gravityDirection?: GravityDirection
 }
 
-export const Board = forwardRef<BoardHandle, BoardProps>(function Board({ cellSize = DEFAULT_CELL_SIZE }, ref) {
+export const Board = forwardRef<BoardHandle, BoardProps>(function Board(
+  { cellSize = DEFAULT_CELL_SIZE, gravityDirection = 'down' },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const landscape = gravityDirection === 'left' || gravityDirection === 'right'
+  const canvasWidth = (landscape ? BOARD_HEIGHT : BOARD_WIDTH) * cellSize
+  const canvasHeight = (landscape ? BOARD_WIDTH : BOARD_HEIGHT) * cellSize
 
   useImperativeHandle(ref, () => ({
     draw(buffer: Uint8Array) {
@@ -30,8 +50,28 @@ export const Board = forwardRef<BoardHandle, BoardProps>(function Board({ cellSi
         for (let col = 0; col < BOARD_WIDTH; col++) {
           const value = buffer[row * BOARD_WIDTH + col]
           if (!value) continue
+          let x: number
+          let y: number
+          switch (gravityDirection) {
+            case 'down':
+              x = col * cellSize
+              y = row * cellSize
+              break
+            case 'up':
+              x = col * cellSize
+              y = (BOARD_HEIGHT - 1 - row) * cellSize
+              break
+            case 'right':
+              x = row * cellSize
+              y = col * cellSize
+              break
+            case 'left':
+              x = (BOARD_HEIGHT - 1 - row) * cellSize
+              y = col * cellSize
+              break
+          }
           ctx.fillStyle = COLORS[value - 1] ?? '#999'
-          ctx.fillRect(col * cellSize + 1, row * cellSize + 1, cellSize - 2, cellSize - 2)
+          ctx.fillRect(x + 1, y + 1, cellSize - 2, cellSize - 2)
         }
       }
     },
@@ -40,8 +80,8 @@ export const Board = forwardRef<BoardHandle, BoardProps>(function Board({ cellSi
   return (
     <canvas
       ref={canvasRef}
-      width={BOARD_WIDTH * cellSize}
-      height={BOARD_HEIGHT * cellSize}
+      width={canvasWidth}
+      height={canvasHeight}
       style={{ background: '#000', border: '2px solid #444', imageRendering: 'pixelated' }}
     />
   )
