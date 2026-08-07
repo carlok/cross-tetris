@@ -1,0 +1,15 @@
+[package]
+name = "sim"
+version = "0.1.0"
+edition = "2021"
+description = "Headless batch simulator and benchmark for Cross Tetris"
+license = "MIT"
+publish = false
+
+[dependencies]
+engine = { path = "../engine" }
+ai = { path = "../ai" }
+
+[[bin]]
+name = "bench"
+path = "src/main.rs"
