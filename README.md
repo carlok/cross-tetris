@@ -145,3 +145,7 @@ The in-browser game loop uses `requestAnimationFrame`, which browsers
 throttle/pause for hidden or backgrounded tabs — expected behavior, not a
 bug. If you're driving the page through browser automation and it appears to
 "freeze," check `document.visibilityState`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
