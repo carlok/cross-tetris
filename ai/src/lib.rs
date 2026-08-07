@@ -1,3 +1,4 @@
+pub mod bitboard;
 pub mod greedy;
 
 pub use greedy::{

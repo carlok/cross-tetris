@@ -13,10 +13,11 @@
 //! to execute a chosen placement directly rather than derive it from
 //! real-time input, so this does not misrepresent what the AI "solves".
 
-use engine::board::{Board, BOARD_TOTAL_HEIGHT, BOARD_WIDTH};
+use crate::bitboard::{self, BitBoard};
+use engine::board::BOARD_WIDTH;
 use engine::cross::{Arm, CrossGame};
 use engine::piece::{ActivePiece, PieceKind, Rotation};
-use engine::rotation::{piece_fits, shape};
+use engine::rotation::shape;
 use engine::{Action, GameState};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -55,7 +56,7 @@ struct Features {
     lines_cleared: u32,
 }
 
-fn column_heights(board: &Board) -> [u32; BOARD_WIDTH] {
+fn column_heights(board: &BitBoard) -> [u32; BOARD_WIDTH] {
     let mut heights = [0u32; BOARD_WIDTH];
     for (col, h) in heights.iter_mut().enumerate() {
         *h = board.column_height(col);
@@ -63,7 +64,7 @@ fn column_heights(board: &Board) -> [u32; BOARD_WIDTH] {
     heights
 }
 
-fn count_holes(board: &Board) -> u32 {
+fn count_holes(board: &BitBoard) -> u32 {
     let mut holes = 0;
     for col in 0..BOARD_WIDTH as i32 {
         let mut found_filled = false;
@@ -78,7 +79,7 @@ fn count_holes(board: &Board) -> u32 {
     holes
 }
 
-fn extract_features(board: &Board, lines_cleared: u32) -> Features {
+fn extract_features(board: &BitBoard, lines_cleared: u32) -> Features {
     let heights = column_heights(board);
     let agg_height: u32 = heights.iter().sum();
     let bumpiness: u32 = heights.windows(2).map(|w| (w[0] as i32 - w[1] as i32).unsigned_abs()).sum();
@@ -102,23 +103,24 @@ fn score(features: &Features, weights: &Weights) -> f32 {
 }
 
 /// Resulting board (after locking `piece` and clearing any complete lines)
-/// and the number of lines that placement clears.
-fn simulate_lock(board: &Board, piece: &ActivePiece) -> (Board, u32) {
-    let mut b = board.clone();
-    for (row, col) in piece.occupied_cells() {
-        b.set(row, col, Some(piece.kind));
-    }
+/// and the number of lines that placement clears. `board: BitBoard` is
+/// `Copy` (80 bytes) — this is a stack copy, not the heap allocation
+/// `engine::Board::clone()` used to be, done once per candidate placement
+/// (~40 times per well per decision).
+fn simulate_lock(board: BitBoard, piece: &ActivePiece) -> (BitBoard, u32) {
+    let mut b = board;
+    b.place(piece);
     let cleared = b.clear_full_rows();
     (b, cleared)
 }
 
 /// Row of the topmost filled cell in `col`, or `BOARD_TOTAL_HEIGHT` (the
-/// floor) if the column is empty — `Board::column_height` already encodes
+/// floor) if the column is empty — `BitBoard::column_height` already encodes
 /// this (`height = BOARD_TOTAL_HEIGHT - top_row`, `0` for an empty column,
 /// which inverts back to exactly `BOARD_TOTAL_HEIGHT`), so this is just a
 /// unit conversion, not a rescan.
-fn col_top(board: &Board, col: i32) -> i32 {
-    BOARD_TOTAL_HEIGHT as i32 - board.column_height(col as usize) as i32
+fn col_top(board: &BitBoard, col: i32) -> i32 {
+    engine::board::BOARD_TOTAL_HEIGHT as i32 - board.column_height(col as usize) as i32
 }
 
 /// Every legal final resting placement of `kind` on `board`: for each SRS
@@ -140,7 +142,7 @@ fn col_top(board: &Board, col: i32) -> i32 {
 /// very top yields a landing row that doesn't fit anything — the old
 /// iterative version would simply never find a valid resting spot there
 /// either, so this preserves identical behavior at that edge case too).
-fn enumerate_placements(board: &Board, kind: PieceKind) -> Vec<ActivePiece> {
+fn enumerate_placements(board: &BitBoard, kind: PieceKind) -> Vec<ActivePiece> {
     const ROTATIONS: [Rotation; 4] = [Rotation::R0, Rotation::R, Rotation::R2, Rotation::L];
     let col_tops: [i32; BOARD_WIDTH] = core::array::from_fn(|c| col_top(board, c as i32));
     let mut out = Vec::new();
@@ -161,7 +163,7 @@ fn enumerate_placements(board: &Board, kind: PieceKind) -> Vec<ActivePiece> {
             // overall minimum is the same either way.
             let row = cells.iter().map(|&(dr, dc)| col_tops[(col + dc) as usize] - dr - 1).min().unwrap();
             let piece = ActivePiece { kind, rotation, row, col };
-            if piece_fits(board, &piece) {
+            if bitboard::piece_fits(board, &piece) {
                 out.push(piece);
             }
         }
@@ -177,11 +179,12 @@ fn enumerate_placements(board: &Board, kind: PieceKind) -> Vec<ActivePiece> {
 /// (stable rotation/column iteration order) for determinism.
 pub fn best_placement(state: &GameState, weights: &Weights) -> Option<Placement> {
     let active = state.active?;
-    let candidates = enumerate_placements(&state.board, active.kind);
+    let bb = BitBoard::from_board(&state.board);
+    let candidates = enumerate_placements(&bb, active.kind);
     candidates
         .into_iter()
         .map(|piece| {
-            let (resulting_board, lines_cleared) = simulate_lock(&state.board, &piece);
+            let (resulting_board, lines_cleared) = simulate_lock(bb, &piece);
             let features = extract_features(&resulting_board, lines_cleared);
             (piece, score(&features, weights))
         })
@@ -239,11 +242,18 @@ pub fn best_cross_placement(cross: &mut CrossGame, weights: &Weights) -> Option<
         .iter()
         .copied()
         .filter(|&arm| cross.is_well_selectable(arm))
-        .flat_map(|arm| enumerate_placements(&cross.well(arm).board, kind).into_iter().map(move |piece| (arm, piece)))
-        .map(|(arm, piece)| {
-            let (resulting_board, lines_cleared) = simulate_lock(&cross.well(arm).board, &piece);
-            let features = extract_features(&resulting_board, lines_cleared);
-            (arm, piece, score(&features, weights))
+        .flat_map(|arm| {
+            // One conversion per well per decision, not per candidate — the
+            // board doesn't change across the ~40 candidates a well yields.
+            let bb = BitBoard::from_board(&cross.well(arm).board);
+            enumerate_placements(&bb, kind)
+                .into_iter()
+                .map(move |piece| {
+                    let (resulting_board, lines_cleared) = simulate_lock(bb, &piece);
+                    let features = extract_features(&resulting_board, lines_cleared);
+                    (arm, piece, score(&features, weights))
+                })
+                .collect::<Vec<_>>()
         })
         .max_by(|(_, _, a), (_, _, b)| a.partial_cmp(b).unwrap())
         .map(|(arm, piece, _)| CrossPlacement { arm, rotation: piece.rotation, column: piece.col, row: piece.row })
@@ -267,7 +277,9 @@ pub fn play_best_cross_move(cross: &mut CrossGame, weights: &Weights) {
 #[cfg(test)]
 mod landing_row_tests {
     use super::*;
+    use engine::board::Board;
     use engine::rng::Rng;
+    use engine::rotation::piece_fits;
 
     /// Deliberately independent reimplementation of "drop straight down one
     /// row at a time" (the technique enumerate_placements used before the
@@ -402,8 +414,9 @@ mod landing_row_tests {
     #[test]
     fn skirt_landing_row_matches_naive_drop_loop_on_every_kind_and_board() {
         for board in test_boards() {
+            let bb = BitBoard::from_board(&board);
             for &kind in &PieceKind::ALL {
-                let fast = placement_set(&enumerate_placements(&board, kind));
+                let fast = placement_set(&enumerate_placements(&bb, kind));
                 let naive = placement_set(&naive_enumerate_placements(&board, kind));
                 assert_eq!(fast, naive, "mismatch for {kind:?} on board:\n{board:?}");
             }
