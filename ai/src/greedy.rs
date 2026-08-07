@@ -13,7 +13,7 @@
 //! to execute a chosen placement directly rather than derive it from
 //! real-time input, so this does not misrepresent what the AI "solves".
 
-use engine::board::{Board, BOARD_WIDTH};
+use engine::board::{Board, BOARD_TOTAL_HEIGHT, BOARD_WIDTH};
 use engine::cross::{Arm, CrossGame};
 use engine::piece::{ActivePiece, PieceKind, Rotation};
 use engine::rotation::{piece_fits, shape};
@@ -112,11 +112,37 @@ fn simulate_lock(board: &Board, piece: &ActivePiece) -> (Board, u32) {
     (b, cleared)
 }
 
+/// Row of the topmost filled cell in `col`, or `BOARD_TOTAL_HEIGHT` (the
+/// floor) if the column is empty — `Board::column_height` already encodes
+/// this (`height = BOARD_TOTAL_HEIGHT - top_row`, `0` for an empty column,
+/// which inverts back to exactly `BOARD_TOTAL_HEIGHT`), so this is just a
+/// unit conversion, not a rescan.
+fn col_top(board: &Board, col: i32) -> i32 {
+    BOARD_TOTAL_HEIGHT as i32 - board.column_height(col as usize) as i32
+}
+
 /// Every legal final resting placement of `kind` on `board`: for each SRS
 /// rotation state and every horizontally in-bounds column, the piece dropped
 /// straight down to where it first collides.
+///
+/// The landing row is computed directly (the "skirt" technique) instead of
+/// walking down one row at a time with a `piece_fits` check per step — for
+/// each occupied cell `(dr, dc)` of the piece, the highest row it could rest
+/// at is `col_top(col + dc) - dr - 1` (one row above the first filled cell
+/// in that column, or the floor); the piece's actual landing row is the
+/// *smallest* (most constraining) of those across its 4 cells. Column tops
+/// are precomputed once per board (not per candidate — the board doesn't
+/// change across the ~40 candidates this function considers), turning what
+/// was up to ~40 `piece_fits` calls per candidate into 4 array reads.
+///
+/// `piece_fits` is still called once per candidate at the computed landing
+/// row, as a cheap correctness safety net (e.g. a column already full to the
+/// very top yields a landing row that doesn't fit anything — the old
+/// iterative version would simply never find a valid resting spot there
+/// either, so this preserves identical behavior at that edge case too).
 fn enumerate_placements(board: &Board, kind: PieceKind) -> Vec<ActivePiece> {
     const ROTATIONS: [Rotation; 4] = [Rotation::R0, Rotation::R, Rotation::R2, Rotation::L];
+    let col_tops: [i32; BOARD_WIDTH] = core::array::from_fn(|c| col_top(board, c as i32));
     let mut out = Vec::new();
     for &rotation in &ROTATIONS {
         let cells = shape(kind, rotation);
@@ -128,17 +154,13 @@ fn enumerate_placements(board: &Board, kind: PieceKind) -> Vec<ActivePiece> {
             continue;
         }
         for col in lo..=hi {
-            // Start well above the board (always legal, per Board::get's open-above-top rule)
-            // and fall until the next row down would collide.
-            let mut piece = ActivePiece { kind, rotation, row: -40, col };
-            loop {
-                let next = ActivePiece { row: piece.row + 1, ..piece };
-                if piece_fits(board, &next) {
-                    piece = next;
-                } else {
-                    break;
-                }
-            }
+            // min over all 4 cells is equivalent to first taking, per
+            // distinct dc, the cell with the largest dr (the piece's
+            // "skirt" in that column) and then the min over columns — for a
+            // fixed dc the term is monotonically decreasing in dr, so the
+            // overall minimum is the same either way.
+            let row = cells.iter().map(|&(dr, dc)| col_tops[(col + dc) as usize] - dr - 1).min().unwrap();
+            let piece = ActivePiece { kind, rotation, row, col };
             if piece_fits(board, &piece) {
                 out.push(piece);
             }
@@ -240,4 +262,151 @@ pub fn play_best_cross_move(cross: &mut CrossGame, weights: &Weights) {
     cross.force_active_placement(placement.rotation, placement.row, placement.column);
     cross.apply(Action::HardDrop);
     cross.wells[placement.arm.index()].score += drop_distance * engine::scoring::HARD_DROP_POINTS_PER_CELL;
+}
+
+#[cfg(test)]
+mod landing_row_tests {
+    use super::*;
+    use engine::rng::Rng;
+
+    /// Deliberately independent reimplementation of "drop straight down one
+    /// row at a time" (the technique enumerate_placements used before the
+    /// skirt-based landing-row shortcut), so this test can catch a
+    /// regression in the fast path rather than just re-testing itself.
+    fn naive_enumerate_placements(board: &Board, kind: PieceKind) -> Vec<ActivePiece> {
+        const ROTATIONS: [Rotation; 4] = [Rotation::R0, Rotation::R, Rotation::R2, Rotation::L];
+        let mut out = Vec::new();
+        for &rotation in &ROTATIONS {
+            let cells = shape(kind, rotation);
+            let min_col = cells.iter().map(|&(_, c)| c).min().unwrap();
+            let max_col = cells.iter().map(|&(_, c)| c).max().unwrap();
+            let lo = -min_col;
+            let hi = BOARD_WIDTH as i32 - 1 - max_col;
+            if lo > hi {
+                continue;
+            }
+            for col in lo..=hi {
+                let mut piece = ActivePiece { kind, rotation, row: -40, col };
+                loop {
+                    let next = ActivePiece { row: piece.row + 1, ..piece };
+                    if piece_fits(board, &next) {
+                        piece = next;
+                    } else {
+                        break;
+                    }
+                }
+                if piece_fits(board, &piece) {
+                    out.push(piece);
+                }
+            }
+            if kind == PieceKind::O {
+                break;
+            }
+        }
+        out
+    }
+
+    // Rotation isn't Hash, so compare as a sorted Vec instead of a HashSet.
+    fn placement_key(p: &ActivePiece) -> (i32, i32, u8) {
+        let r = match p.rotation {
+            Rotation::R0 => 0,
+            Rotation::R => 1,
+            Rotation::R2 => 2,
+            Rotation::L => 3,
+        };
+        (p.col, p.row, r)
+    }
+
+    fn placement_set(pieces: &[ActivePiece]) -> Vec<(i32, i32, u8)> {
+        let mut v: Vec<_> = pieces.iter().map(placement_key).collect();
+        v.sort_unstable();
+        v
+    }
+
+    /// Boards with varied stack shapes: empty, flat, staggered, a well, an
+    /// overhang, and a column filled all the way to the top (the edge case
+    /// the landing-row shortcut's doc comment calls out specifically).
+    fn test_boards() -> Vec<Board> {
+        let mut boards = vec![Board::new()];
+
+        let mut flat = Board::new();
+        for col in 0..BOARD_WIDTH as i32 {
+            for row in 35..40 {
+                flat.set(row, col, Some(PieceKind::J));
+            }
+        }
+        boards.push(flat);
+
+        let mut staggered = Board::new();
+        for col in 0..BOARD_WIDTH as i32 {
+            let height = 30 + (col % 4) * 2;
+            for row in height..40 {
+                staggered.set(row, col, Some(PieceKind::L));
+            }
+        }
+        boards.push(staggered);
+
+        let mut well = Board::new();
+        for col in 0..BOARD_WIDTH as i32 {
+            if col == 5 {
+                continue;
+            }
+            for row in 34..40 {
+                well.set(row, col, Some(PieceKind::T));
+            }
+        }
+        boards.push(well);
+
+        let mut overhang = Board::new();
+        for col in 0..BOARD_WIDTH as i32 {
+            overhang.set(20, col, Some(PieceKind::S)); // a floating row near the top
+        }
+        for col in 0..3 {
+            for row in 35..40 {
+                overhang.set(row, col, Some(PieceKind::Z));
+            }
+        }
+        boards.push(overhang);
+
+        let mut full_column = Board::new();
+        for row in 0..40 {
+            full_column.set(row, 4, Some(PieceKind::O));
+        }
+        boards.push(full_column);
+
+        // A batch of pseudo-random boards built by dropping random pieces
+        // via the same landing-row logic being tested, seeded for
+        // reproducibility (this only builds test fixtures, not the
+        // assertions themselves).
+        let mut rng = Rng::new(777);
+        for _ in 0..10 {
+            let mut b = Board::new();
+            for _ in 0..15 {
+                let kind = PieceKind::ALL[rng.next_below(7) as usize];
+                let candidates = naive_enumerate_placements(&b, kind);
+                if candidates.is_empty() {
+                    break;
+                }
+                let pick = &candidates[rng.next_below(candidates.len() as u32) as usize];
+                for (row, col) in pick.occupied_cells() {
+                    b.set(row, col, Some(kind));
+                }
+                b.clear_full_rows();
+            }
+            boards.push(b);
+        }
+
+        boards
+    }
+
+    #[test]
+    fn skirt_landing_row_matches_naive_drop_loop_on_every_kind_and_board() {
+        for board in test_boards() {
+            for &kind in &PieceKind::ALL {
+                let fast = placement_set(&enumerate_placements(&board, kind));
+                let naive = placement_set(&naive_enumerate_placements(&board, kind));
+                assert_eq!(fast, naive, "mismatch for {kind:?} on board:\n{board:?}");
+            }
+        }
+    }
 }
