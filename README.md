@@ -10,6 +10,8 @@ waiting their turn, not four simultaneous independent games. Total score is
 the sum of the four, and the game ends when any single well tops out. No
 shared resources or garbage coupling yet.
 
+![Cross Tetris — four wells sharing one piece stream](sshot.png)
+
 ## Game rules
 
 - **Board**: 4 wells, each standard 10×20 (plus 20 hidden spawn rows). East
