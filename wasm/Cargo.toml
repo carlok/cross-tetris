@@ -2,6 +2,8 @@
 name = "cross-tetris-wasm"
 version = "0.1.0"
 edition = "2021"
+description = "wasm-bindgen bridge exposing the Cross Tetris engine and AI to JS"
+publish = false
 
 [lib]
 path = "src/lib.rs"

@@ -2,6 +2,8 @@
 name = "engine"
 version = "0.1.0"
 edition = "2021"
+description = "Deterministic Cross Tetris game engine: rotation, gravity, line clears, scoring"
+publish = false
 
 [dependencies]
 
