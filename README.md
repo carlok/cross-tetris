@@ -10,6 +10,39 @@ waiting their turn, not four simultaneous independent games. Total score is
 the sum of the four, and the game ends when any single well tops out. No
 shared resources or garbage coupling yet.
 
+## Game rules
+
+- **Board**: 4 wells, each standard 10×20 (plus 20 hidden spawn rows). East
+  and West render landscape, but the underlying rules are identical for
+  every well — only the paint step differs (see "Project layout" below).
+- **Pieces**: the 7 standard tetrominoes, standard SRS rotation with wall
+  kicks, drawn from **one shared 7-bag** for the whole cross (not 4
+  independent bags) — every 7 consecutive pieces contain each kind exactly
+  once, regardless of which wells they end up in.
+- **One piece falls at a time.** Before it spawns, pick which well it goes
+  to; it then plays out as normal real-time Tetris there (move, rotate,
+  soft/hard drop) until it locks, and the next piece needs a well picked
+  again. The other three wells just sit there as static stacks waiting
+  their turn.
+- **Selection timeout**: 5000 ms (`SELECTION_TIMEOUT_MS`) to pick a well. Run
+  out the clock and one is chosen for you at random, from a seed-derived
+  deterministic stream separate from the piece bag (so auto-selection never
+  perturbs the piece sequence itself).
+- **Well-imbalance limit**: a well can't be selected once it's more than 8
+  pieces (`MAX_WELL_IMBALANCE`) ahead of the least-used well — keeps the
+  whole queue from being dumped into a single well. Enforced identically for
+  human input, auto-selection, and the AI's search.
+- **Gravity**: standard Guideline-style curve, 1000ms/row at level 1 down to
+  7ms/row at level 15+; level = `lines_cleared / 10 + 1`.
+- **Lock delay**: 500ms after a piece is grounded, resetting on a successful
+  move/rotate up to 15 times (prevents infinite-lock stalling).
+- **Scoring**: Single/Double/Triple/Tetris = 100/300/500/800 × level; soft
+  drop = 1 pt/cell, hard drop = 2 pt/cell. No back-to-back/combo bonus yet.
+  Total score is the sum across all 4 wells.
+- **Hold**: per-well hold slot (not shared across wells), once per piece.
+- **Game over**: when any single well tops out (a fresh spawn has nowhere
+  to go) — not when all four do.
+
 ## Project layout
 
 ```
