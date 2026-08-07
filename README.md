@@ -214,6 +214,33 @@ placement quality is high enough that this benchmark can't show lookahead's
 benefit (if any) without a much longer run or a harder test (adversarial
 seeds, faster gravity) that doesn't exist yet.
 
+### Longest recorded run
+
+Out of curiosity: `dellacherie`, 20 games on fresh seeds (20000..20019, not
+reused from the dev/test sets above), capped at 200,000 pieces/game instead
+of 3,000. None of the 20 topped out — every game hit the piece cap still
+climbing, so this is a compute-limited snapshot, not a real game-over, and
+comparing it to the smaller-cap numbers above isn't apples-to-apples:
+
+| stat   | score         | seed  |
+|--------|--------------:|------:|
+| max    | 8,320,083,214 | 20008 |
+| mean   | 8,307,083,133.9 | — |
+| median | 8,309,481,510 | 20006 |
+| p10    | 8,296,925,986 | — |
+| min    | 8,295,197,698 | 20014 |
+
+All 20 games cleared ~79,995 lines and used the full 200,000-piece
+allowance. Finding this run surfaced a real bug: `score` was `u32`
+throughout the engine, and with the level multiplier uncapped
+(`level = lines_cleared / 10 + 1`), a first pass at this same benchmark
+landed at a suspicious ~4.0 billion mean — only ~270M under `u32::MAX`.
+Rerunning after widening every score field to `u64` (engine, wasm bridge as
+`f64` for JS, `sim`) produced almost exactly double the old numbers on the
+same seeds, confirming a `u32` wraparound had already silently happened
+once in the "before" run. Fixed and covered by a regression test
+(`engine/tests/line_clear_tests.rs`); see the fix commit for details.
+
 ## What's not (yet)
 
 Shared resources beyond the implicit single queue (global action budget),
