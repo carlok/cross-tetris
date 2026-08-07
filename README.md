@@ -1,4 +1,4 @@
-# Cross Tetris — Milestone 2
+# Cross Tetris
 
 Four-well cross Tetris (Rust engine → WASM) with a playable React UI and a
 greedy rule-based AI. Mode A ("Independent Cross" per the project spec): four
@@ -59,7 +59,8 @@ ai/       greedy one-ply rule-based AI, depends on engine. best_cross_placement
           plus where in it, per spec section 4.1.
 wasm/     wasm-bindgen bridge exposing engine+ai to JS, zero game logic of its
           own. WasmGame (single board) and WasmCrossGame (4-well cross) both
-          exposed.
+          exposed. Plays with ai::greedy only — dellacherie/lookahead are
+          sim-only for now (see "AI performance").
 web/      Vite + React + TypeScript UI — cross-shaped 4-well layout. East/
           West render landscape; all four wells' rendering (Board.tsx)
           applies a per-arm transform so pieces visually spawn near the
@@ -67,6 +68,10 @@ web/      Vite + React + TypeScript UI — cross-shaped 4-well layout. East/
           is always the same orientation regardless of arm (spec's
           "canonical internal orientation," reused verbatim, only the
           paint step differs).
+sim/      headless batch benchmark (`cargo run -p sim --release`), no
+          rendering. Plays N seeded games with any of the ai crate's
+          evaluators and reports score/lines/throughput — see "AI
+          performance" below.
 ```
 
 ## Prerequisites
@@ -162,11 +167,12 @@ whichever well is selected; each well keeps its own board/score/level/hold/
 top-out/pieces-placed count. A well can't be selected once it's more than
 `MAX_WELL_IMBALANCE` pieces ahead of the least-used well (`is_well_selectable`,
 enforced by both `select_well` and the AI's search — never just a UI-layer
-suggestion). A one-ply greedy AI scores every (well, rotation, column)
-combination for the upcoming piece on aggregate height, holes, bumpiness,
-height variance, and lines cleared, and picks the argmax across all
-selectable wells at once. Keyboard and gamepad input, synthesized sound
-effects, and best-effort gamepad vibration.
+suggestion). The web UI's AI toggle plays with the one-ply greedy evaluator
+(aggregate height, holes, bumpiness, height variance, lines cleared);
+stronger `dellacherie` and `lookahead` evaluators also exist in the `ai`
+crate but aren't wired into the UI yet — see "AI performance" for what they
+buy you. Keyboard and gamepad input, synthesized sound effects, and
+best-effort gamepad vibration.
 
 ## AI performance
 
