@@ -11,10 +11,16 @@
 //! Dev seeds (iterate freely): 1000..1100 (default).
 //! Test seeds (touch once, for the final report only): 5000..5100.
 
-use ai::{best_cross_placement, play_best_cross_move, DEFAULT_WEIGHTS};
+use ai::{best_cross_placement, dellacherie, play_best_cross_move, DEFAULT_WEIGHTS};
 use engine::CrossGame;
 use std::fs;
 use std::time::Instant;
+
+#[derive(Clone, Copy, PartialEq)]
+enum Evaluator {
+    Greedy,
+    Dellacherie,
+}
 
 struct Args {
     seed_start: u64,
@@ -22,6 +28,7 @@ struct Args {
     max_pieces: u32,
     save_baseline: Option<String>,
     check_baseline: Option<String>,
+    evaluator: Evaluator,
 }
 
 fn parse_args() -> Args {
@@ -30,6 +37,7 @@ fn parse_args() -> Args {
     let mut max_pieces = 20_000u32;
     let mut save_baseline = None;
     let mut check_baseline = None;
+    let mut evaluator = Evaluator::Greedy;
 
     let argv: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -54,12 +62,20 @@ fn parse_args() -> Args {
                 i += 1;
                 check_baseline = Some(argv.get(i).expect("--check-baseline requires PATH").clone());
             }
+            "--evaluator" => {
+                i += 1;
+                evaluator = match argv.get(i).expect("--evaluator requires greedy|dellacherie").as_str() {
+                    "greedy" => Evaluator::Greedy,
+                    "dellacherie" => Evaluator::Dellacherie,
+                    other => panic!("unknown evaluator: {other}"),
+                };
+            }
             other => panic!("unknown argument: {other}"),
         }
         i += 1;
     }
 
-    Args { seed_start, seed_end, max_pieces, save_baseline, check_baseline }
+    Args { seed_start, seed_end, max_pieces, save_baseline, check_baseline, evaluator }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -80,7 +96,7 @@ struct GameResult {
 /// Returns the result plus, if `record` is set, the full placement sequence
 /// (recomputed via `best_cross_placement` alongside the real move — only
 /// done when recording, so it never affects the throughput measurement).
-fn play_one_game(seed: u64, max_pieces: u32, record: bool) -> (GameResult, Vec<String>) {
+fn play_one_game(seed: u64, max_pieces: u32, record: bool, evaluator: Evaluator) -> (GameResult, Vec<String>) {
     let mut cross = CrossGame::new(seed);
     let mut pieces = 0u32;
     let mut placements = Vec::new();
@@ -95,12 +111,19 @@ fn play_one_game(seed: u64, max_pieces: u32, record: bool) -> (GameResult, Vec<S
             break;
         }
         if record {
-            if let Some(p) = best_cross_placement(&mut cross, &DEFAULT_WEIGHTS) {
+            let recorded = match evaluator {
+                Evaluator::Greedy => best_cross_placement(&mut cross, &DEFAULT_WEIGHTS),
+                Evaluator::Dellacherie => dellacherie::best_cross_placement(&mut cross, &dellacherie::DELLACHERIE_WEIGHTS),
+            };
+            if let Some(p) = recorded {
                 placements.push(format!("{:?} {:?} {} {}", p.arm, p.rotation, p.column, p.row));
             }
         }
         let before = cross.total_pieces_placed();
-        play_best_cross_move(&mut cross, &DEFAULT_WEIGHTS);
+        match evaluator {
+            Evaluator::Greedy => play_best_cross_move(&mut cross, &DEFAULT_WEIGHTS),
+            Evaluator::Dellacherie => dellacherie::play_best_cross_move(&mut cross, &dellacherie::DELLACHERIE_WEIGHTS),
+        }
         if cross.total_pieces_placed() == before {
             // No progress this step. Two distinct causes, and they must not
             // be conflated:
@@ -142,7 +165,7 @@ fn main() {
     let mut all_placements = Vec::new();
 
     for seed in args.seed_start..args.seed_end {
-        let (result, placements) = play_one_game(seed, args.max_pieces, record);
+        let (result, placements) = play_one_game(seed, args.max_pieces, record, args.evaluator);
         if record {
             all_placements.push(format!("# seed {seed}"));
             all_placements.extend(placements);
@@ -192,6 +215,7 @@ fn main() {
     let capped = results.iter().filter(|r| r.end == EndReason::Capped).count();
     let stalled = results.iter().filter(|r| r.end == EndReason::Stalled).count();
 
+    println!("evaluator:        {}", if args.evaluator == Evaluator::Greedy { "greedy" } else { "dellacherie" });
     println!("games:            {games}");
     println!("mean score:       {mean_score:.1}");
     println!("median score:     {}", percentile(&scores, 0.5));

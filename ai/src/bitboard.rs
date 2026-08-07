@@ -111,6 +111,38 @@ impl BitBoard {
             self.set(row, col);
         }
     }
+
+    /// Row index of the topmost non-empty row, or `BOARD_TOTAL_HEIGHT` if
+    /// the board is entirely empty. Shared by every feature that must not
+    /// count the (many) entirely-empty hidden rows above the actual stack —
+    /// counting them would bias the feature toward taller stacks, since a
+    /// shorter stack simply has more empty rows to (wrongly) count.
+    pub fn topmost_filled_row(&self) -> usize {
+        for (r, row_mask) in self.rows.iter().enumerate() {
+            if *row_mask != 0 {
+                return r;
+            }
+        }
+        BOARD_TOTAL_HEIGHT
+    }
+
+    /// Empty cells with at least one filled cell above them in the same
+    /// column.
+    pub fn count_holes(&self) -> u32 {
+        let mut holes = 0;
+        for col in 0..BOARD_WIDTH {
+            let mut found_filled = false;
+            for row_mask in self.rows.iter() {
+                let filled = (row_mask >> col) & 1 != 0;
+                if filled {
+                    found_filled = true;
+                } else if found_filled {
+                    holes += 1;
+                }
+            }
+        }
+        holes
+    }
 }
 
 impl Default for BitBoard {
@@ -199,6 +231,36 @@ mod tests {
             for row in 0..BOARD_TOTAL_HEIGHT {
                 assert_eq!(bb.is_row_full(row), board.is_row_full(row), "row {row} mismatch\n{board:?}");
             }
+        }
+    }
+
+    #[test]
+    fn count_holes_matches_independent_engine_board_scan() {
+        for board in engine_boards() {
+            let bb = BitBoard::from_board(&board);
+            // Independent reimplementation directly against engine::Board,
+            // not a call to the same logic being tested.
+            let mut expected = 0u32;
+            for col in 0..BOARD_WIDTH as i32 {
+                let mut found_filled = false;
+                for row in 0..BOARD_TOTAL_HEIGHT as i32 {
+                    if board.is_occupied(row, col) {
+                        found_filled = true;
+                    } else if found_filled {
+                        expected += 1;
+                    }
+                }
+            }
+            assert_eq!(bb.count_holes(), expected, "hole count mismatch\n{board:?}");
+        }
+    }
+
+    #[test]
+    fn topmost_filled_row_matches_independent_scan() {
+        for board in engine_boards() {
+            let bb = BitBoard::from_board(&board);
+            let expected = (0..BOARD_TOTAL_HEIGHT).find(|&r| !board.is_row_empty(r)).unwrap_or(BOARD_TOTAL_HEIGHT);
+            assert_eq!(bb.topmost_filled_row(), expected, "topmost-filled-row mismatch\n{board:?}");
         }
     }
 
