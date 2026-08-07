@@ -165,6 +165,13 @@ fn score(features: &Features, weights: &Weights) -> f32 {
         + weights.well_sums * features.well_sums as f32
 }
 
+/// Dellacherie eval of one placement's resulting board, exposed for reuse by
+/// `lookahead.rs`'s beam search (which needs to score both plies with the
+/// same feature set this module already implements).
+pub fn score_board(board_before: &BitBoard, piece: &ActivePiece, board_after: &BitBoard, weights: &Weights) -> f32 {
+    score(&extract_features(board_before, piece, board_after), weights)
+}
+
 /// The highest-scoring legal placement for the *upcoming* piece across every
 /// selectable well, per Dellacherie's feature set. Mirrors
 /// `greedy::best_cross_placement`'s shape exactly.

@@ -11,7 +11,7 @@
 //! Dev seeds (iterate freely): 1000..1100 (default).
 //! Test seeds (touch once, for the final report only): 5000..5100.
 
-use ai::{best_cross_placement, dellacherie, play_best_cross_move, DEFAULT_WEIGHTS};
+use ai::{best_cross_placement, dellacherie, lookahead, play_best_cross_move, DEFAULT_WEIGHTS};
 use engine::CrossGame;
 use std::fs;
 use std::time::Instant;
@@ -20,6 +20,7 @@ use std::time::Instant;
 enum Evaluator {
     Greedy,
     Dellacherie,
+    Lookahead,
 }
 
 struct Args {
@@ -29,6 +30,7 @@ struct Args {
     save_baseline: Option<String>,
     check_baseline: Option<String>,
     evaluator: Evaluator,
+    beam_width: usize,
 }
 
 fn parse_args() -> Args {
@@ -38,6 +40,7 @@ fn parse_args() -> Args {
     let mut save_baseline = None;
     let mut check_baseline = None;
     let mut evaluator = Evaluator::Greedy;
+    let mut beam_width = lookahead::DEFAULT_BEAM_WIDTH;
 
     let argv: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -64,18 +67,23 @@ fn parse_args() -> Args {
             }
             "--evaluator" => {
                 i += 1;
-                evaluator = match argv.get(i).expect("--evaluator requires greedy|dellacherie").as_str() {
+                evaluator = match argv.get(i).expect("--evaluator requires greedy|dellacherie|lookahead").as_str() {
                     "greedy" => Evaluator::Greedy,
                     "dellacherie" => Evaluator::Dellacherie,
+                    "lookahead" => Evaluator::Lookahead,
                     other => panic!("unknown evaluator: {other}"),
                 };
+            }
+            "--beam-width" => {
+                i += 1;
+                beam_width = argv.get(i).expect("--beam-width requires N").parse().expect("bad beam-width");
             }
             other => panic!("unknown argument: {other}"),
         }
         i += 1;
     }
 
-    Args { seed_start, seed_end, max_pieces, save_baseline, check_baseline, evaluator }
+    Args { seed_start, seed_end, max_pieces, save_baseline, check_baseline, evaluator, beam_width }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -96,7 +104,7 @@ struct GameResult {
 /// Returns the result plus, if `record` is set, the full placement sequence
 /// (recomputed via `best_cross_placement` alongside the real move — only
 /// done when recording, so it never affects the throughput measurement).
-fn play_one_game(seed: u64, max_pieces: u32, record: bool, evaluator: Evaluator) -> (GameResult, Vec<String>) {
+fn play_one_game(seed: u64, max_pieces: u32, record: bool, evaluator: Evaluator, beam_width: usize) -> (GameResult, Vec<String>) {
     let mut cross = CrossGame::new(seed);
     let mut pieces = 0u32;
     let mut placements = Vec::new();
@@ -114,6 +122,7 @@ fn play_one_game(seed: u64, max_pieces: u32, record: bool, evaluator: Evaluator)
             let recorded = match evaluator {
                 Evaluator::Greedy => best_cross_placement(&mut cross, &DEFAULT_WEIGHTS),
                 Evaluator::Dellacherie => dellacherie::best_cross_placement(&mut cross, &dellacherie::DELLACHERIE_WEIGHTS),
+                Evaluator::Lookahead => lookahead::best_cross_placement(&mut cross, &dellacherie::DELLACHERIE_WEIGHTS, beam_width),
             };
             if let Some(p) = recorded {
                 placements.push(format!("{:?} {:?} {} {}", p.arm, p.rotation, p.column, p.row));
@@ -123,6 +132,7 @@ fn play_one_game(seed: u64, max_pieces: u32, record: bool, evaluator: Evaluator)
         match evaluator {
             Evaluator::Greedy => play_best_cross_move(&mut cross, &DEFAULT_WEIGHTS),
             Evaluator::Dellacherie => dellacherie::play_best_cross_move(&mut cross, &dellacherie::DELLACHERIE_WEIGHTS),
+            Evaluator::Lookahead => lookahead::play_best_cross_move(&mut cross, &dellacherie::DELLACHERIE_WEIGHTS, beam_width),
         }
         if cross.total_pieces_placed() == before {
             // No progress this step. Two distinct causes, and they must not
@@ -165,7 +175,7 @@ fn main() {
     let mut all_placements = Vec::new();
 
     for seed in args.seed_start..args.seed_end {
-        let (result, placements) = play_one_game(seed, args.max_pieces, record, args.evaluator);
+        let (result, placements) = play_one_game(seed, args.max_pieces, record, args.evaluator, args.beam_width);
         if record {
             all_placements.push(format!("# seed {seed}"));
             all_placements.extend(placements);
@@ -215,7 +225,12 @@ fn main() {
     let capped = results.iter().filter(|r| r.end == EndReason::Capped).count();
     let stalled = results.iter().filter(|r| r.end == EndReason::Stalled).count();
 
-    println!("evaluator:        {}", if args.evaluator == Evaluator::Greedy { "greedy" } else { "dellacherie" });
+    let evaluator_label = match args.evaluator {
+        Evaluator::Greedy => "greedy".to_string(),
+        Evaluator::Dellacherie => "dellacherie".to_string(),
+        Evaluator::Lookahead => format!("lookahead (beam={})", args.beam_width),
+    };
+    println!("evaluator:        {evaluator_label}");
     println!("games:            {games}");
     println!("mean score:       {mean_score:.1}");
     println!("median score:     {}", percentile(&scores, 0.5));

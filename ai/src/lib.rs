@@ -1,6 +1,7 @@
 pub mod bitboard;
 pub mod dellacherie;
 pub mod greedy;
+pub mod lookahead;
 pub mod placement;
 
 pub use greedy::{
