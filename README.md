@@ -168,6 +168,46 @@ height variance, and lines cleared, and picks the argmax across all
 selectable wells at once. Keyboard and gamepad input, synthesized sound
 effects, and best-effort gamepad vibration.
 
+## AI performance
+
+Three one-ply-or-deeper evaluators live in the `ai` crate; the web UI plays
+with `greedy`, and `sim` (a headless batch benchmark, `cargo run -p sim
+--release`) can drive any of them for measurement. See `plan.md` for the
+full step-by-step design/verification history behind each one.
+
+- **`greedy`** — the original baseline: aggregate height, holes, bumpiness,
+  height variance, lines cleared, weighted and summed.
+- **`dellacherie`** — Dellacherie's six published classical features
+  (landing height, eroded piece cells, row/column transitions, holes, well
+  sums), a stronger and still fully hand-derived, non-ML feature set.
+- **`lookahead`** — a 2-ply beam search over `dellacherie`: scores every
+  legal placement of the current piece, keeps the top `beam_width`
+  candidates, and for each one finds its best reply to the *next* piece the
+  shared queue already exposes (which may land in any well the well-balance
+  rule still allows).
+
+Final report, test seeds 5000..5100 (touched once, per `plan.md`'s dev/test
+seed discipline), capped at 3000 pieces/game — the cap needed lowering
+partway through this work because `dellacherie` already survives the
+original 20,000-piece cap in 100/100 dev-seed games, leaving no headroom to
+show a difference at the old cap:
+
+| evaluator             | topped out | mean score  | mean lines | placements/sec |
+|------------------------|:---------:|------------:|-----------:|----------------:|
+| greedy                 | 41/100    | 1,493,444.6 |      928.4 |          31,313 |
+| dellacherie             | 0/100     | 2,030,343.7 |    1,196.3 |          20,069 |
+| lookahead (beam=8)      | 0/100     | 2,027,740.0 |    1,197.1 |           2,185 |
+
+Dellacherie is a clear, large win over greedy (41% top-out rate → 0%, +36%
+score within the capped window). 2-ply lookahead is not: at this piece-count
+scale it's statistically indistinguishable from 1-ply Dellacherie on score
+and lines cleared, at roughly 10x the cost. Both evaluators already survive
+every test-seed game through the full 3000-piece cap, so the shared queue's
+one-piece-ahead information isn't changing outcomes here — 1-ply Dellacherie
+placement quality is high enough that this benchmark can't show lookahead's
+benefit (if any) without a much longer run or a harder test (adversarial
+seeds, faster gravity) that doesn't exist yet.
+
 ## What's not (yet)
 
 Shared resources beyond the implicit single queue (global action budget),
