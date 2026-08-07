@@ -18,7 +18,7 @@ pub struct GameState {
     pub active: Option<ActivePiece>,
     pub hold: Option<PieceKind>,
     pub hold_used_this_turn: bool,
-    pub score: u32,
+    pub score: u64,
     pub level: u32,
     pub lines_cleared_total: u32,
     pub game_over: bool,
@@ -146,7 +146,7 @@ impl GameState {
                 while self.try_move(1, 0) {
                     dropped_rows += 1;
                 }
-                self.score += dropped_rows * HARD_DROP_POINTS_PER_CELL;
+                self.score += dropped_rows as u64 * HARD_DROP_POINTS_PER_CELL;
                 self.lock_active_piece();
             }
             Action::Hold => self.apply_hold(),

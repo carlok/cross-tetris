@@ -23,5 +23,5 @@ fn fixed_action_sequence_produces_expected_score_and_board() {
     // and produces a well-formed board buffer of the expected size.
     let buffer = game.board_buffer();
     assert_eq!(buffer.len(), 10 * 20);
-    assert!(game.score() > 0 || !game.is_game_over());
+    assert!(game.score() > 0.0 || !game.is_game_over());
 }

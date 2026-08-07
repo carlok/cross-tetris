@@ -210,7 +210,7 @@ pub fn play_best_cross_move(cross: &mut CrossGame, weights: &Weights) {
     let drop_distance = (placement.row - active.row).max(0) as u32;
     cross.force_active_placement(placement.rotation, placement.row, placement.column);
     cross.apply(Action::HardDrop);
-    cross.wells[placement.arm.index()].score += drop_distance * engine::scoring::HARD_DROP_POINTS_PER_CELL;
+    cross.wells[placement.arm.index()].score += drop_distance as u64 * engine::scoring::HARD_DROP_POINTS_PER_CELL;
 }
 
 /// Single-board equivalent of `best_cross_placement`, mirroring

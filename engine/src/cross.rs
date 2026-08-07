@@ -56,7 +56,7 @@ impl Arm {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Well {
     pub board: Board,
-    pub score: u32,
+    pub score: u64,
     pub level: u32,
     pub lines_cleared_total: u32,
     pub hold: Option<PieceKind>,
@@ -330,7 +330,7 @@ impl CrossGame {
                 while self.try_move(1, 0) {
                     dropped_rows += 1;
                 }
-                self.wells[a.arm.index()].score += dropped_rows * HARD_DROP_POINTS_PER_CELL;
+                self.wells[a.arm.index()].score += dropped_rows as u64 * HARD_DROP_POINTS_PER_CELL;
                 self.lock_active_piece();
             }
             Action::Hold => self.apply_hold(),
@@ -416,7 +416,7 @@ impl CrossGame {
         b
     }
 
-    pub fn total_score(&self) -> u32 {
+    pub fn total_score(&self) -> u64 {
         self.wells.iter().map(|w| w.score).sum()
     }
 

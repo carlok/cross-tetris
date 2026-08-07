@@ -74,8 +74,13 @@ impl WasmGame {
         self.state.rendered_board().visible_buffer()
     }
 
-    pub fn score(&self) -> u32 {
-        self.state.score
+    /// `f64`, not `u32`/`u64`: score is unbounded (level keeps climbing with
+    /// no cap), so a long enough game overflows `u32` — JS `number` (`f64`)
+    /// represents integers exactly up to 2^53, far beyond any score a real
+    /// game reaches, without forcing wasm-bindgen's `u64` -> `bigint`
+    /// mapping on every caller in `web/`.
+    pub fn score(&self) -> f64 {
+        self.state.score as f64
     }
 
     pub fn level(&self) -> u32 {
@@ -241,12 +246,13 @@ impl WasmCrossGame {
         self.cross.rendered_board(arm.into()).visible_buffer()
     }
 
-    pub fn score(&self, arm: WasmArm) -> u32 {
-        self.cross.well(arm.into()).score
+    /// `f64`, see the single-board `score()` above for why.
+    pub fn score(&self, arm: WasmArm) -> f64 {
+        self.cross.well(arm.into()).score as f64
     }
 
-    pub fn total_score(&self) -> u32 {
-        self.cross.total_score()
+    pub fn total_score(&self) -> f64 {
+        self.cross.total_score() as f64
     }
 
     /// Monotonically increasing across the whole game — useful for the UI

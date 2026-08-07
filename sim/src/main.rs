@@ -31,6 +31,7 @@ struct Args {
     check_baseline: Option<String>,
     evaluator: Evaluator,
     beam_width: usize,
+    per_game: bool,
 }
 
 fn parse_args() -> Args {
@@ -41,6 +42,7 @@ fn parse_args() -> Args {
     let mut check_baseline = None;
     let mut evaluator = Evaluator::Greedy;
     let mut beam_width = lookahead::DEFAULT_BEAM_WIDTH;
+    let mut per_game = false;
 
     let argv: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -78,12 +80,15 @@ fn parse_args() -> Args {
                 i += 1;
                 beam_width = argv.get(i).expect("--beam-width requires N").parse().expect("bad beam-width");
             }
+            "--per-game" => {
+                per_game = true;
+            }
             other => panic!("unknown argument: {other}"),
         }
         i += 1;
     }
 
-    Args { seed_start, seed_end, max_pieces, save_baseline, check_baseline, evaluator, beam_width }
+    Args { seed_start, seed_end, max_pieces, save_baseline, check_baseline, evaluator, beam_width, per_game }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -94,7 +99,8 @@ enum EndReason {
 }
 
 struct GameResult {
-    score: u32,
+    seed: u64,
+    score: u64,
     lines: u32,
     pieces: u32,
     end: EndReason,
@@ -153,14 +159,14 @@ fn play_one_game(seed: u64, max_pieces: u32, record: bool, evaluator: Evaluator,
         pieces += 1;
     }
     (
-        GameResult { score: cross.total_score(), lines: cross.total_lines_cleared(), pieces, end },
+        GameResult { seed, score: cross.total_score(), lines: cross.total_lines_cleared(), pieces, end },
         placements,
     )
 }
 
-fn percentile(sorted: &[u32], p: f64) -> u32 {
+fn percentile<T: Copy + Default>(sorted: &[T], p: f64) -> T {
     if sorted.is_empty() {
-        return 0;
+        return T::default();
     }
     let idx = ((sorted.len() - 1) as f64 * p).round() as usize;
     sorted[idx]
@@ -211,7 +217,7 @@ fn main() {
     }
 
     let games = results.len();
-    let mut scores: Vec<u32> = results.iter().map(|r| r.score).collect();
+    let mut scores: Vec<u64> = results.iter().map(|r| r.score).collect();
     scores.sort_unstable();
     let mut lines: Vec<u32> = results.iter().map(|r| r.lines).collect();
     lines.sort_unstable();
@@ -230,11 +236,16 @@ fn main() {
         Evaluator::Dellacherie => "dellacherie".to_string(),
         Evaluator::Lookahead => format!("lookahead (beam={})", args.beam_width),
     };
+    let best = results.iter().max_by_key(|r| r.score);
+    let worst = results.iter().min_by_key(|r| r.score);
+
     println!("evaluator:        {evaluator_label}");
     println!("games:            {games}");
+    println!("max score:        {} (seed {})", best.map(|r| r.score).unwrap_or(0), best.map(|r| r.seed).unwrap_or(0));
     println!("mean score:       {mean_score:.1}");
     println!("median score:     {}", percentile(&scores, 0.5));
     println!("p10 score:        {}", percentile(&scores, 0.10));
+    println!("min score:        {} (seed {})", worst.map(|r| r.score).unwrap_or(0), worst.map(|r| r.seed).unwrap_or(0));
     println!("mean lines:       {mean_lines:.1}");
     println!("mean pieces:      {mean_pieces:.1}");
     println!("topped out:       {topped_out}   capped: {capped}   stalled: {stalled}");
@@ -244,6 +255,21 @@ fn main() {
         total_pieces as f64 / elapsed.as_secs_f64()
     );
     println!("elapsed:          {:.3} s", elapsed.as_secs_f64());
+
+    if args.per_game {
+        let mut by_score: Vec<&GameResult> = results.iter().collect();
+        by_score.sort_unstable_by_key(|r| std::cmp::Reverse(r.score));
+        println!();
+        println!("{:>10}  {:>12}  {:>8}  {:>8}  {:>10}", "seed", "score", "lines", "pieces", "end");
+        for r in by_score {
+            let end = match r.end {
+                EndReason::ToppedOut => "topped_out",
+                EndReason::Capped => "capped",
+                EndReason::Stalled => "stalled",
+            };
+            println!("{:>10}  {:>12}  {:>8}  {:>8}  {:>10}", r.seed, r.score, r.lines, r.pieces, end);
+        }
+    }
 
     if capped > games / 2 {
         eprintln!("WARNING: over half the games hit --max-pieces ({max_pieces}) — scores are censored, raise the cap", max_pieces = args.max_pieces);

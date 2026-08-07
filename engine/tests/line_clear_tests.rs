@@ -62,7 +62,26 @@ fn hard_drop_awards_two_points_per_cell_dropped() {
     });
     let expected_drop_rows = BOTTOM - 1; // O's cells land on rows BOTTOM-1..=BOTTOM
     state.apply(Action::HardDrop);
-    assert_eq!(state.score, (expected_drop_rows as u32) * 2);
+    assert_eq!(state.score, (expected_drop_rows as u64) * 2);
+}
+
+/// Score is `u64`, not `u32`: an AI benchmark run (200,000 pieces at
+/// dev-seed difficulty) reached ~4.0 billion points — only ~270 million
+/// below `u32::MAX` (4,294,967,295) at "just" level ~8000, well within reach
+/// of a longer game. `score` must accumulate past `u32::MAX` without
+/// silently wrapping, since neither the engine nor its release build has
+/// overflow checks enabled by default.
+#[test]
+fn score_accumulates_correctly_past_u32_max() {
+    let mut state = GameState::new(1);
+    state.score = u32::MAX as u64 - 50;
+    fill_row_except(&mut state, BOTTOM, &[0, 1, 2, 3]);
+    state.active = Some(ActivePiece { kind: PieceKind::I, rotation: Rotation::R0, row: BOTTOM - 1, col: 0 });
+
+    state.apply(Action::HardDrop); // Single at level 1 = 100 points
+
+    assert_eq!(state.score, u32::MAX as u64 - 50 + 100);
+    assert!(state.score > u32::MAX as u64, "score must have crossed u32::MAX, not wrapped back below it");
 }
 
 #[test]
