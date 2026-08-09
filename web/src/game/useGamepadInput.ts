@@ -113,6 +113,8 @@ export function useGamepadInput(gameRef: RefObject<WasmCrossGame | null>, enable
           effects.hold()
         })
         onPress('A', pressed(BUTTON.A), () => {
+          game.rotate_cw()
+          effects.rotate()
           game.hard_drop()
         })
 

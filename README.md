@@ -141,7 +141,8 @@ an interval, one placement per step).
 
 **Gamepad**: any standard-mapping pad (Xbox/PS-style) works once a button is
 pressed — D-pad or left stick for well-selection/movement (same spatial
-mapping as the arrow keys), A = hard drop, Y or B = rotate CW/CCW, X = hold.
+mapping as the arrow keys), A = rotate CW + hard drop, Y or B = rotate
+CW/CCW, X = hold.
 Polled via the Gamepad API (no press-and-release events exist for it) at
 20Hz. Vibration fires on lock/line-clear/game-over where the browser and pad
 support it (best-effort, silently does nothing otherwise).
