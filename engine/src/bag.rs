@@ -30,6 +30,10 @@ impl SevenBag {
         self.queue.extend(pieces);
     }
 
+    // Not std::iter::Iterator::next: SevenBag is a bounded, infallible piece
+    // source (always refills), not a general iterator — no Option, no fuse
+    // semantics needed, and callers read it as "draw the next piece" plainly.
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> PieceKind {
         if self.queue.len() <= 7 {
             // Keep at least one full bag buffered so `preview` can look ahead

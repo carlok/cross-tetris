@@ -18,8 +18,8 @@ export function Controls({ aiEnabled, onToggleAi, onRestart }: ControlsProps) {
         <div>Space: hard drop</div>
         <div>C: hold</div>
         <div style={{ marginTop: 6, opacity: 0.6 }}>
-          Gamepad: D-pad/stick for selection and movement, A = hard drop,
-          Y/B = rotate, X = hold.
+          Gamepad: D-pad/stick for selection and movement, A = rotate CW +
+          hard drop, Y/B = rotate, X = hold.
         </div>
         <div style={{ marginTop: 6, opacity: 0.6 }}>
           One shared piece queue. You pick which well each piece goes to,
