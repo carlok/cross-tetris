@@ -10,6 +10,10 @@ waiting their turn, not four simultaneous independent games. Total score is
 the sum of the four, and the game ends when any single well tops out. No
 shared resources or garbage coupling yet.
 
+**[▶ Play it live](https://carlok.github.io/cross-tetris/)** — rebuilds and
+redeploys automatically on every push to `master`
+([workflow](.github/workflows/deploy.yml)).
+
 ![Cross Tetris — four wells sharing one piece stream](sshot.png)
 
 ## Game rules
